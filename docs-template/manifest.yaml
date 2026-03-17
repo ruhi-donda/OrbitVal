@@ -1,0 +1,207 @@
+# OrbitVal — manifest.yaml (connections + phases)
+#
+# Single source of truth for:
+# - What connects to what (CLI commands, modules, services, packs)
+# - Which phases exist (current + upcoming)
+# - Where runtime config lives
+#
+# Keep this file in sync with MANIFEST.md (rich, linked) and MAP.md (entry point)
+# when connections or phases change.
+#
+# Typically lives at the repo root as `manifest.yaml`.
+
+schema_version: 1
+name: OrbitVal
+type: library     # python package
+version: 0.1.0
+description: Local installed testing framework for CubeSat autonomy software (3U v1) with orbital simulation, fault injection, and JSON+PDF reporting.
+
+owner:
+  name: OrbitVal maintainers
+  role: Maintainers
+
+repo:
+  url: tbd
+  branch: main
+  issue_tracker: github
+
+stack:
+  framework: python-package
+  language: python
+  orbital_mechanics: [poliastro, astropy]
+  tle_data: celestrak
+  fault_injection_engine: python
+  reporting: [json, pdf]
+  future_cloud_dashboard:
+    frontend: react
+    backend: fastapi
+    hosting: { frontend: vercel, backend: render }
+
+environments:
+  local:
+    env_file: .env   # optional; most runs should work without env vars
+    env_keys:
+      - CELESTRAK_CACHE_DIR
+      - ORBITVAL_OFFLINE_MODE
+
+# -----------------------------------------------------------------------------
+# CLI commands / entrypoints
+# -----------------------------------------------------------------------------
+# file: path from repo root
+
+entrypoints:
+  cli:
+    file: orbitval/cli.py
+    provides:
+      - run
+      - list-faults
+      - validate-config
+      - report
+    notes: "Primary user interface for local runs and artifact generation."
+
+# -----------------------------------------------------------------------------
+# Modules (domain ownership)
+# -----------------------------------------------------------------------------
+# owns: primary concepts owned by the module
+# depends_on: modules/services used at runtime
+
+modules:
+  config:
+    file: orbitval/config/
+    owns: [scenario_config, hardware_3u_config]
+    depends_on: []
+    notes: "Schemas and validation for scenario + 3U hardware configs."
+  orbits:
+    file: orbitval/orbits/
+    owns: [tle_source, propagation, ground_track, comms_windows]
+    depends_on: [config]
+    notes: "Orbit initialization/propagation and derived products."
+  faults:
+    file: orbitval/faults/
+    owns: [fault_catalog, fault_packs, scenario_metadata]
+    depends_on: []
+    notes: "Named, documented fault scenarios and pack discovery."
+  engine:
+    file: orbitval/engine/
+    owns: [injection_engine, runner_harness]
+    depends_on: [config, orbits, faults]
+    notes: "Runs autonomy code under test with injected telemetry."
+  reporting:
+    file: orbitval/reporting/
+    owns: [json_report, pdf_report]
+    depends_on: [engine, config, faults, orbits]
+    notes: "Produces reproducible artifacts for mission readiness reviews."
+
+# -----------------------------------------------------------------------------
+# Services
+# -----------------------------------------------------------------------------
+# Services perform IO (network/filesystem) and external integration.
+
+services:
+  CelestrakTleService:
+    domain: ORBITS
+    file: orbitval/orbits/tle.py
+    role: Fetches and caches TLEs from Celestrak; supports offline mode via local cache/direct TLE input.
+    reads: [celestrak_endpoints, tle_cache]
+    writes: [tle_cache]
+  ReportWriter:
+    domain: REPORTING
+    file: orbitval/reporting/
+    role: Writes JSON and PDF reports plus an artifacts manifest to disk.
+    reads: [run_results, templates]
+    writes: [json_report, pdf_report, artifacts]
+
+# -----------------------------------------------------------------------------
+# Runtime config reference (optional)
+# -----------------------------------------------------------------------------
+
+runtime_config_file: orbitval/config/
+
+# -----------------------------------------------------------------------------
+# Phases
+# -----------------------------------------------------------------------------
+# Used by planning tools to understand where the project is and what comes next.
+
+phases:
+  current: 1
+  history:
+    - phase: 1
+      name: Local MVP framework
+      status: in_progress   # or done
+      scope:
+        - Orbital simulation engine (TLE or orbital parameters) with ground track + comms windows
+        - 3U CubeSat hardware config model (sensors, actuators, power budget)
+        - Fault injection engine with named, documented scenarios
+        - Reproducible test report output (structured JSON + PDF)
+  upcoming:
+    - phase: 2
+      name: Expanded local fault packs + regression runs
+      scope:
+        - Advanced fault scenario packs and tooling (open core add-ons)
+        - Regression campaigns (repeatable runs, diffing results)
+        - Scenario library management (local)
+    - phase: 3
+      name: Optional cloud dashboard (results/configs only)
+      scope:
+        - React dashboard for visualization and sharing of outputs
+        - FastAPI backend for storing scenario configs + test outputs (no proprietary autonomy code)
+        - Hosted on Vercel (frontend) and Render (backend)
+
+# -----------------------------------------------------------------------------
+# Dashboard checks (optional)
+# -----------------------------------------------------------------------------
+# Quick health checks that tools can surface (e.g. "config present", "schema exists").
+
+dashboard:
+  - label: Scenario schema
+    check: orbitval/config/scenario_schema.py
+    type: file
+    description: Scenario config validation is implemented
+  - label: 3U hardware schema
+    check: orbitval/config/hardware_3u_schema.py
+    type: file
+    description: 3U CubeSat hardware config model is implemented
+  - label: Fault catalog
+    check: orbitval/faults/catalog.py
+    type: file
+    description: Fault scenarios registry exists
+  - label: Report generation
+    check: orbitval/reporting/
+    type: file
+    description: JSON/PDF reporting module exists
+
+# -----------------------------------------------------------------------------
+# Module dependency order (optional)
+# -----------------------------------------------------------------------------
+
+module_order:
+  - config
+  - orbits
+  - faults
+  - engine
+  - reporting
+
+# -----------------------------------------------------------------------------
+# Planned connections (future phases)
+# -----------------------------------------------------------------------------
+# Add here when a phase is scoped; move to screens/controllers/services above
+# when implemented.
+
+planned:
+  phase_2:
+    modules:
+      regression:
+        file: orbitval/regression/
+        notes: "Batch runner + diff tooling for repeated readiness runs."
+    services: {}
+    notes: "Phase 2 focuses on advanced packs, regression runs, and scenario libraries."
+
+# -----------------------------------------------------------------------------
+# Notes
+# -----------------------------------------------------------------------------
+
+notes: |
+  OrbitVal’s manifest is intentionally parseable for tooling.
+  - Keep MANIFEST.md as the rich, linked version for humans.
+  - Keep manifest.yaml as the parseable version for tools and AI.
+  - Update both when modules/services/phases change.

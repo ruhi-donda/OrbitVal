@@ -1,0 +1,22 @@
+schema_version: "1.0"
+name: "My CubeSat"
+form_factor: "3U"
+mass_kg: 4.0
+
+sensors:
+  - type: GPS
+    noise_sigma: 0.01
+  - type: star_tracker
+    noise_sigma: 0.005
+  - type: magnetometer
+    noise_sigma: 0.02
+
+actuators:
+  - type: reaction_wheel
+    max_torque_nm: 0.001
+  - type: magnetorquer
+    max_torque_nm: 0.0005
+
+power:
+  battery_capacity_wh: 20.0
+  solar_panel_area_m2: 0.06

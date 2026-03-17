@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+reports/
+*.egg-info/
+dist/
+build/
+.env
+~/.orbitval/
