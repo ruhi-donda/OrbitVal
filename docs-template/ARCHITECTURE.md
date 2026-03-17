@@ -362,3 +362,33 @@ Requires eventually transferring spec governance — complex to manage
 but necessary for institutional credibility at scale. Modeled on how
 Linux, OpenAPI, and FHIR achieved universal adoption while commercial
 entities built sustainable businesses around them.
+
+### ADR-007: Fault flags are stripped before autonomy code sees telemetry
+
+**Status:** Accepted
+
+**Problem:**
+OrbitVal injects fault metadata into TelemetryFrame.flags for internal
+tracking and reporting. If autonomy code can read these flags, teams can
+write code that detects faults by reading OrbitVal metadata rather than
+by detecting anomalies in raw sensor data. This produces passing reports
+for code that would fail in orbit.
+
+**Options considered:**
+- Option A: Allow autonomy code to read flags — simpler, easier demos
+- Option B: Strip flags before passing frames to autonomy code — realistic,
+  defensible, forces genuine fault detection
+
+**Decision:**
+Option B. The harness strips all flags from TelemetryFrame before calling
+autonomy.process(). Autonomy code receives only raw sensor values, exactly
+as onboard software would in orbit. Flags remain available internally for
+the injection trace and report generator.
+
+**Consequences:**
+- Autonomy code must detect faults from sensor data, not metadata
+- Test results are genuinely meaningful — a PASS means the code actually
+  detected and handled the fault from raw data
+- Makes OrbitVal's results trustworthy to insurers and launch providers
+- The sensor_noise scenario now correctly FAILs autonomy code that doesn't
+  implement real noise detection logic

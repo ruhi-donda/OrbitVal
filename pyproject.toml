@@ -13,3 +13,9 @@ dependencies = [
     "pyyaml",
     "reportlab",
 ]
+
+[project.scripts]
+orbitval = "orbitval.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["orbitval*"]

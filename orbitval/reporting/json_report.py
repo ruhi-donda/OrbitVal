@@ -121,8 +121,9 @@ def generate_json_report(
         "certification_eligible": certification_eligible,
 
         # Injection trace — full audit trail
+        # Injection trace — full audit trail
         "injection_trace": [
-            {
+            event if isinstance(event, dict) else {
                 "t": event.t,
                 "fault_name": event.fault_name,
                 "fields_modified": event.fields_modified,
