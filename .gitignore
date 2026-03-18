@@ -12,3 +12,9 @@ build/
 docs-template/ARCHITECTURE.md
 docs-template/ROADMAP.md
 docs-template/INTERNALS.md
+test_orbit.py
+docs-template/TODO.md
+docs-template/AUDIT.md
+docs-template/CURSOR_CONTEXT.md
+docs-template/DEBUG.md
+docs-template/README.md
