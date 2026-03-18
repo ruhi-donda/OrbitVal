@@ -8,6 +8,9 @@ Records a full trace of every injection for the ORF report.
 
 from dataclasses import dataclass
 from orbitval.faults.base import TelemetryFrame, FaultScenario
+from orbitval.logging import get_logger
+
+log = get_logger("injection")
 
 
 @dataclass
@@ -50,11 +53,20 @@ def run_injection(
                     and f != "flags"
                 ]
                 if changed:
+                    log.debug(
+                        "Fault '%s' active at t=%.0fs — modified: %s",
+                        scenario.name, frame.t, ", ".join(changed)
+                    )
                     trace.append(InjectionEvent(
                         t=frame.t,
                         fault_name=scenario.name,
                         fields_modified=changed,
                     ))
         injected_stream.append(modified_frame)
+
+    log.info(
+        "Injection complete — %d events recorded across %d scenario(s)",
+        len(trace), len(scenarios)
+    )
 
     return injected_stream, trace

@@ -20,6 +20,8 @@ from pathlib import Path
 from orbitval.faults.base import TelemetryFrame
 from orbitval.engine.injection import InjectionEvent
 from orbitval.config.hardware_3u_schema import HardwareConfig
+from orbitval.logging import get_logger, get_run_events
+log = get_logger("report")
 
 
 ORF_SPEC_VERSION = "1.0"
@@ -120,8 +122,7 @@ def generate_json_report(
         "overall_result": overall_result,
         "certification_eligible": certification_eligible,
 
-        # Injection trace — full audit trail
-        # Injection trace — full audit trail
+     # Injection trace — full audit trail
         "injection_trace": [
             event if isinstance(event, dict) else {
                 "t": event.t,
@@ -130,6 +131,10 @@ def generate_json_report(
             }
             for event in injection_trace
         ],
+
+        # Run log — embedded audit trail of every internal decision
+        # Makes the report self-documenting for insurers and launch providers
+        "run_log": get_run_events(),
     }
 
     # Compute integrity hash — this is what makes it a verifiable attestation
@@ -141,5 +146,6 @@ def generate_json_report(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, default=str))
 
-    print(f"[orbitval] JSON report written to {output}")
+    log.info("JSON report written: %s", output)
+    log.info("Integrity hash: %s...", integrity_hash[:16])
     return payload

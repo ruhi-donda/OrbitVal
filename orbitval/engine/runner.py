@@ -39,6 +39,8 @@ from orbitval.faults.catalog import get_fault
 from orbitval.engine.injection import run_injection
 from orbitval.reporting.json_report import generate_json_report
 from orbitval.reporting.pdf_report import generate_pdf_report
+from orbitval.logging import get_logger, init_run_log, clear_run_events
+log = get_logger("runner")
 
 
 # ── Autonomy interface ────────────────────────────────────────
@@ -253,11 +255,11 @@ class TestRunner:
         if tle_line1 and tle_line2:
             self.tle = tle_from_strings(tle_name, tle_line1, tle_line2)
         else:
-            print(f"[orbitval] Fetching TLE for '{tle_name}'...")
+            log.info("Fetching TLE for '%s'", tle_name)
             self.tle = fetch_tle(tle_name)
 
         # Propagate orbit
-        print("[orbitval] Propagating orbit...")
+        log.info("Propagating orbit...")
         self.orbit = propagate_from_tle(
             tle_line1=self.tle.line1,
             tle_line2=self.tle.line2,
@@ -271,7 +273,7 @@ class TestRunner:
 
         # Compute comms windows
         if self.ground_stations:
-            print("[orbitval] Computing comms windows...")
+            log.info("Computing comms windows...")
             self.comms_windows = compute_comms_windows(
                 tle_line1=self.tle.line1,
                 tle_line2=self.tle.line2,
@@ -280,7 +282,7 @@ class TestRunner:
                 duration_hours=duration_hours,
                 step_seconds=10.0,
             )
-            print(f"[orbitval] Found {len(self.comms_windows)} comms windows")
+            log.info("Found %d comms window(s)", len(self.comms_windows))
         else:
             self.comms_windows = []
 
@@ -340,7 +342,7 @@ class TestRunner:
         scenario_results = []
 
         for scenario_name in scenarios:
-            print(f"[orbitval] Running scenario: {scenario_name}...")
+            log.info("Running scenario: %s", scenario_name)
 
             # Reset autonomy state between scenarios
             self.autonomy.reset()
@@ -392,14 +394,15 @@ class TestRunner:
             )
             scenario_results.append(result)
 
-            status = "✓ PASS" if result.result == "PASS" else "✗ FAIL"
-            print(f"[orbitval] {status} — {scenario_name} "
-                  f"(primary response: {result.primary_response})")
-            if result.failure_reason:
-                print(f"[orbitval]   reason: {result.failure_reason}")
+            if result.result == "PASS":
+                log.info("PASS — %s (primary: %s)", scenario_name, result.primary_response)
+            else:
+                log.error("FAIL — %s (primary: %s)", scenario_name, result.primary_response)
+                if result.failure_reason:
+                    log.error("  reason: %s", result.failure_reason)
 
         # Generate reports
-        print("[orbitval] Generating reports...")
+        log.info("Generating reports...")
         scenarios_run = [
             {
                 "name": r.name,
@@ -415,9 +418,11 @@ class TestRunner:
         ]
 
         from datetime import datetime
+        clear_run_events()
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
         sat_name = self.hardware.name.replace(" ", "_").lower()
         report_stem = f"{sat_name}_{timestamp}"
+        init_run_log(Path(output_dir) / f"{report_stem}.log")
 
         report = generate_json_report(
             satellite_name=self.hardware.name,

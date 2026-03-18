@@ -53,10 +53,19 @@ def cmd_validate(args):
 
 def cmd_run(args):
     """Run fault injection stress test."""
+    from orbitval.logging import set_log_level
     from orbitval.engine.runner import TestRunner
     from orbitval.faults.base import TelemetryFrame
     from orbitval.orbits.comms_windows import GroundStation
     import math
+
+    # Set log level from flags
+    if args.verbose:
+        set_log_level("DEBUG")
+    elif args.quiet:
+        set_log_level("WARNING")
+    else:
+        set_log_level("INFO")
 
     # Parse ground stations if provided
     ground_stations = []
@@ -77,14 +86,8 @@ def cmd_run(args):
                 min_elevation_deg=float(parts[4]) if len(parts) > 4 else 10.0,
             ))
 
-    # Default autonomy — basic safe mode responses
-    # Teams replace this with their own autonomy class
+    # Default autonomy stub
     class DefaultAutonomy:
-        """
-        Default autonomy stub used when no autonomy module is provided.
-        Implements basic safe responses for common fault conditions.
-        Teams should replace this with their actual flight software.
-        """
         def __init__(self):
             self._mag_history = []
 
@@ -121,7 +124,6 @@ def cmd_run(args):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             autonomy = module.Autonomy()
-            print(f"[orbitval] Loaded autonomy module: {args.autonomy}")
         except Exception as e:
             print(f"✗ Failed to load autonomy module: {e}")
             sys.exit(1)
@@ -165,7 +167,6 @@ def cmd_run(args):
     if result == "FAIL":
         sys.exit(1)
 
-
 def main():
     parser = argparse.ArgumentParser(
         prog="orbitval",
@@ -198,6 +199,14 @@ def main():
     run_parser = subparsers.add_parser(
         "run",
         help="Run fault injection stress test"
+    )
+    run_parser.add_argument(
+        "--verbose", action="store_true",
+        help="Show debug logs"
+    )
+    run_parser.add_argument(
+        "--quiet", action="store_true",
+        help="Show warnings and errors only"
     )
     run_parser.add_argument(
         "--config", default="satellite.yaml",

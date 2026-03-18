@@ -16,7 +16,8 @@ import json
 import urllib.request
 import urllib.parse
 import urllib.error
-
+from orbitval.logging import get_logger
+log = get_logger("tle")
 
 CELESTRAK_GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
 CACHE_DIR = Path.home() / ".orbitval" / "tle_cache"
@@ -92,7 +93,7 @@ def fetch_tle(satellite_name: str) -> TLERecord:
 
     # Return cached version if still fresh
     if _is_cache_fresh(cache_file):
-        print(f"[orbitval] Using cached TLE for '{satellite_name}'.")
+        log.info("Cache hit for '%s'", satellite_name)
         return _read_cache(cache_file)
 
     # Fetch from Celestrak using the correct GP endpoint
@@ -107,7 +108,7 @@ def fetch_tle(satellite_name: str) -> TLERecord:
             url,
             headers={"User-Agent": "OrbitVal/0.1.0"}
         )
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             raw = response.read().decode("utf-8").strip()
 
         if not raw or raw == "No GP data found":
@@ -135,9 +136,8 @@ def fetch_tle(satellite_name: str) -> TLERecord:
     except urllib.error.URLError as e:
         # Network failed — fall back to stale cache if available
         if cache_file.exists():
-            print(
-                f"[orbitval] Warning: could not reach Celestrak ({e}). "
-                f"Using stale cache for '{satellite_name}'."
+            log.warning(
+                "Could not reach Celestrak (%s). Using stale cache for '%s'",e, satellite_name
             )
             return _read_cache(cache_file)
         raise ConnectionError(

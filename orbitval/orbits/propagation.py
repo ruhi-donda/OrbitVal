@@ -16,6 +16,8 @@ import numpy as np
 from skyfield.api import load, EarthSatellite, wgs84
 from skyfield.positionlib import Geocentric
 from astropy.time import Time as AstropyTime
+from orbitval.logging import get_logger
+log = get_logger("propagation")
 
 
 @dataclass
@@ -78,6 +80,10 @@ def propagate_from_tle(
     num_steps = int(duration_hours * 3600 / step_seconds)
     times = ts.tt_jd(
         np.linspace(epoch.tt, epoch.tt + duration_hours / 24.0, num_steps)
+    )
+    log.info(
+        "Propagating %d steps over %.1fh from epoch %s",
+        len(list(times)), duration_hours, epoch.utc_iso()
     )
 
     # Propagate and extract ground track
@@ -153,6 +159,8 @@ def propagate_from_params(
         f"2 99999 {inc_str}   0.0000   0.0000  0000001   "
         f"0.0000   0.0000 {n_str}00001"
     )
+    
+    log.debug("Synthetic TLE generated for circular orbit")
 
     return propagate_from_tle(
         tle_line1=tle_line1,

@@ -21,6 +21,8 @@ from orbitval.faults.base import TelemetryFrame
 from skyfield.api import load, wgs84, EarthSatellite
 from skyfield.positionlib import Geocentric
 import numpy as np
+from orbitval.logging import get_logger
+log = get_logger("comms")
 
 
 @dataclass
@@ -159,6 +161,16 @@ def compute_comms_windows(
     all_windows.sort(key=lambda w: w.start_t)
     return all_windows
 
+    log.debug(
+        "Found %d comms window(s) across %d station(s)",
+        len(all_windows), len(ground_stations)
+    )
+    for w in all_windows:
+        log.debug(
+            "  [%s] %s → %s (%.0fs, max el: %.1f°)",
+            w.ground_station, w.start_time, w.end_time,
+            w.duration_s, w.max_elevation_deg
+        )
 
 def annotate_blackouts(
     telemetry_stream: list[TelemetryFrame],
@@ -194,4 +206,13 @@ def annotate_blackouts(
                 "comms_blackout": not in_window,
             }
         ))
+
+    blackout_count = sum(1 for f in annotated if f.flags.get("comms_blackout"))
+    log.warning(
+        "%d/%d frames (%.0f%%) in comms blackout — no ground intervention possible",
+        blackout_count,
+        len(annotated),
+        100 * blackout_count / len(annotated) if annotated else 0,
+    )
+
     return annotated

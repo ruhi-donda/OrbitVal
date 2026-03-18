@@ -19,6 +19,8 @@ from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table,
     TableStyle, HRFlowable
 )
+from orbitval.logging import get_logger
+log = get_logger("report")
 
 
 def generate_pdf_report(report: dict, output_path: str | Path) -> None:
@@ -197,7 +199,7 @@ def generate_pdf_report(report: dict, output_path: str | Path) -> None:
     ))
 
     doc.build(elements)
-    print(f"[orbitval] PDF report written to {output}")
+    log.info("PDF report written: %s", output)
 
 
 def _table(data: list, header: bool = False) -> Table:
