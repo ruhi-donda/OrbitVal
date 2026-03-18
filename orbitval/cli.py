@@ -133,6 +133,8 @@ def cmd_run(args):
         config=args.config,
         autonomy=autonomy,
         tle_name=args.tle_name,
+        orbit_alt_km=args.orbit_alt,
+        orbit_inc_deg=args.orbit_inc,
         duration_hours=args.duration,
         step_seconds=args.step,
         seed=args.seed,
@@ -147,8 +149,8 @@ def cmd_run(args):
         output_dir=args.output,
         mission_profile={
             "orbit_type": args.orbit_type,
-            "altitude_band_km": None,
-            "inclination_deg": None,
+            "altitude_band_km": args.orbit_alt,
+            "inclination_deg": args.orbit_inc,
             "operational_lifetime_years": None,
         },
     )
@@ -245,6 +247,16 @@ def main():
         "--ground-station", nargs="+", dest="ground_station",
         metavar="name,lat,lon[,alt,min_el]",
         help="Ground station(s) e.g. 'Rutgers,40.5,-74.4'"
+    )
+    run_parser.add_argument(
+        "--orbit-alt", type=float, default=None,
+        dest="orbit_alt",
+        help="Orbital altitude in km for pre-launch mode (e.g. 550)"
+    )
+    run_parser.add_argument(
+        "--orbit-inc", type=float, default=None,
+        dest="orbit_inc",
+        help="Orbital inclination in degrees for pre-launch mode (e.g. 53.0)"
     )
     run_parser.add_argument(
         "--orbit-type", default="LEO", dest="orbit_type",

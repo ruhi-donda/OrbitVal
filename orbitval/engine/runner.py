@@ -13,7 +13,7 @@ From TEMPLATES.md:
 
 The harness:
 1. Loads and validates satellite.yaml
-2. Fetches or accepts a TLE
+2. Fetches or accepts a TLE — or synthesizes orbit from params
 3. Propagates the orbit
 4. Builds a telemetry stream
 5. For each scenario: injects faults, runs autonomy code,
@@ -31,7 +31,7 @@ from typing import Protocol, runtime_checkable
 from orbitval.faults.base import TelemetryFrame
 from orbitval.config.hardware_3u_schema import load_hardware_config
 from orbitval.orbits.tle import fetch_tle, tle_from_strings, TLERecord
-from orbitval.orbits.propagation import propagate_from_tle
+from orbitval.orbits.propagation import propagate_from_tle, propagate_from_params
 from orbitval.orbits.comms_windows import (
     compute_comms_windows, annotate_blackouts, GroundStation
 )
@@ -40,6 +40,7 @@ from orbitval.engine.injection import run_injection
 from orbitval.reporting.json_report import generate_json_report
 from orbitval.reporting.pdf_report import generate_pdf_report
 from orbitval.logging import get_logger, init_run_log, clear_run_events
+
 log = get_logger("runner")
 
 
@@ -63,13 +64,12 @@ class AutonomyInterface(Protocol):
                 return "nominal"
 
             def reset(self) -> None:
-                pass  # reset internal state between scenarios
+                pass
     """
 
     def process(self, telemetry: TelemetryFrame) -> str:
         """
         Process a telemetry frame and return a response string.
-        The response describes what the autonomy code decided to do.
 
         Examples:
             "nominal"
@@ -104,7 +104,7 @@ class ScenarioResult:
     duration_s: float
     seed: int
     autonomy_responses: list[str]
-    primary_response: str  # most common response during fault
+    primary_response: str
     fault_trace: list[dict]
     failure_reason: str | None = None
 
@@ -120,18 +120,13 @@ def _evaluate_scenario(
     """
     Evaluate pass/fail for a scenario based on autonomy responses.
 
-    Pass criteria: during active fault injection, the autonomy
-    code must return at least one response from
-    expected_safe_responses (e.g. "safe_mode", "failover").
-
-    Fail criteria: during active fault injection, the autonomy
-    code only returns "nominal" — meaning it didn't detect
-    or respond to the fault.
+    Pass: autonomy code returned at least one safe response
+          during active fault injection.
+    Fail: autonomy code only returned "nominal" during fault —
+          it didn't detect or respond to the fault.
     """
-    from orbitval.faults.catalog import get_fault as _get_fault
     scenario = get_fault(scenario_name)
 
-    # Get responses during active fault injection only
     active_responses = [
         responses[i]
         for i, frame in enumerate(injected_frames)
@@ -151,13 +146,8 @@ def _evaluate_scenario(
             failure_reason="Fault was never active during simulation",
         )
 
-    # Check if any safe response was given during fault
-    responded_safely = any(
-        r in expected_safe_responses
-        for r in active_responses
-    )
+    responded_safely = any(r in expected_safe_responses for r in active_responses)
 
-    # Most common response during fault
     from collections import Counter
     primary = Counter(active_responses).most_common(1)[0][0]
 
@@ -195,28 +185,32 @@ class TestRunner:
     """
     The OrbitVal autonomy harness.
 
-    Loads satellite config, fetches orbit, builds telemetry,
-    runs fault scenarios against user autonomy code, and
-    produces an ORF-compliant report.
+    Supports three orbit input modes:
+    1. TLE by name    — fetches live from Celestrak
+    2. TLE by strings — provided directly (offline/air-gapped)
+    3. Pre-launch     — synthesized from altitude + inclination
+                        (no TLE exists yet — satellite hasn't launched)
 
     Usage:
         from orbitval import TestRunner
 
-        class MyAutonomy:
-            def process(self, telemetry):
-                if not telemetry.gps_available:
-                    return "safe_mode"
-                return "nominal"
-            def reset(self):
-                pass
+        # Mode 1: live TLE
+        runner = TestRunner(config="satellite.yaml", autonomy=MyAutonomy())
 
+        # Mode 2: manual TLE strings
         runner = TestRunner(
             config="satellite.yaml",
             autonomy=MyAutonomy(),
+            tle_line1="1 25544U ...",
+            tle_line2="2 25544 ...",
         )
-        runner.run(
-            scenarios=["gps_dropout", "power_brownout"],
-            output_dir="reports/",
+
+        # Mode 3: pre-launch (no TLE)
+        runner = TestRunner(
+            config="satellite.yaml",
+            autonomy=MyAutonomy(),
+            orbit_alt_km=550,
+            orbit_inc_deg=53.0,
         )
     """
 
@@ -227,6 +221,8 @@ class TestRunner:
         tle_name: str = "ISS (ZARYA)",
         tle_line1: str | None = None,
         tle_line2: str | None = None,
+        orbit_alt_km: float | None = None,
+        orbit_inc_deg: float | None = None,
         duration_hours: float = 1.0,
         step_seconds: float = 60.0,
         seed: int = 42,
@@ -239,6 +235,8 @@ class TestRunner:
             tle_name: satellite name to fetch from Celestrak
             tle_line1: optional manual TLE line 1 (skips Celestrak)
             tle_line2: optional manual TLE line 2 (skips Celestrak)
+            orbit_alt_km: orbital altitude in km (pre-launch mode)
+            orbit_inc_deg: orbital inclination in degrees (pre-launch mode)
             duration_hours: simulation duration
             step_seconds: telemetry time step
             seed: random seed for reproducibility
@@ -251,28 +249,55 @@ class TestRunner:
         self.seed = seed
         self.ground_stations = ground_stations or []
 
-        # Load TLE
-        if tle_line1 and tle_line2:
+        # ── Orbit input: three modes ──────────────────────────
+        if orbit_alt_km is not None and orbit_inc_deg is not None:
+            # Mode 3: pre-launch — synthesize orbit from parameters
+            # Most common use case: satellite hasn't launched yet,
+            # team knows their planned orbit but has no TLE
+            log.info(
+                "Pre-launch mode — synthesizing orbit "
+                "(alt=%.0fkm, inc=%.1f°)",
+                orbit_alt_km, orbit_inc_deg
+            )
+            self.tle = None
+            self.orbit = propagate_from_params(
+                alt_km=orbit_alt_km,
+                inc_deg=orbit_inc_deg,
+                duration_hours=duration_hours,
+                step_seconds=step_seconds,
+            )
+
+        elif tle_line1 and tle_line2:
+            # Mode 2: manual TLE strings — offline/air-gapped
+            log.info("Using provided TLE strings for '%s'", tle_name)
             self.tle = tle_from_strings(tle_name, tle_line1, tle_line2)
+            log.info("Propagating orbit...")
+            self.orbit = propagate_from_tle(
+                tle_line1=self.tle.line1,
+                tle_line2=self.tle.line2,
+                tle_name=self.tle.name,
+                duration_hours=duration_hours,
+                step_seconds=step_seconds,
+            )
+
         else:
+            # Mode 1: fetch live TLE from Celestrak (default)
             log.info("Fetching TLE for '%s'", tle_name)
             self.tle = fetch_tle(tle_name)
-
-        # Propagate orbit
-        log.info("Propagating orbit...")
-        self.orbit = propagate_from_tle(
-            tle_line1=self.tle.line1,
-            tle_line2=self.tle.line2,
-            tle_name=self.tle.name,
-            duration_hours=duration_hours,
-            step_seconds=step_seconds,
-        )
+            log.info("Propagating orbit...")
+            self.orbit = propagate_from_tle(
+                tle_line1=self.tle.line1,
+                tle_line2=self.tle.line2,
+                tle_name=self.tle.name,
+                duration_hours=duration_hours,
+                step_seconds=step_seconds,
+            )
 
         # Build base telemetry stream
         self._base_telemetry = self._build_telemetry()
 
-        # Compute comms windows
-        if self.ground_stations:
+        # ── Comms windows ─────────────────────────────────────
+        if self.ground_stations and self.tle is not None:
             log.info("Computing comms windows...")
             self.comms_windows = compute_comms_windows(
                 tle_line1=self.tle.line1,
@@ -283,6 +308,12 @@ class TestRunner:
                 step_seconds=10.0,
             )
             log.info("Found %d comms window(s)", len(self.comms_windows))
+        elif self.ground_stations and self.tle is None:
+            log.warning(
+                "Comms windows unavailable in pre-launch mode "
+                "(no TLE — synthetic orbit only)"
+            )
+            self.comms_windows = []
         else:
             self.comms_windows = []
 
@@ -320,11 +351,8 @@ class TestRunner:
         Args:
             scenarios: list of fault scenario names
             scenario_kwargs: optional per-scenario kwargs
-                e.g. {"gps_dropout": {"t_start": 60, "duration_s": 120}}
-            output_dir: where to write JSON + PDF reports
+            output_dir: where to write JSON + PDF + log reports
             expected_safe_responses: responses that count as PASS
-                defaults to ["safe_mode", "failover",
-                "failover_to_dead_reckoning", "emergency_shutdown"]
             mission_profile: optional mission context for ORF report
 
         Returns:
@@ -347,7 +375,7 @@ class TestRunner:
             # Reset autonomy state between scenarios
             self.autonomy.reset()
 
-           # Build fault scenario
+            # Build fault scenario
             # Only pass seed to scenarios that accept it
             from inspect import signature
             scenario_class = __import__(
@@ -381,6 +409,10 @@ class TestRunner:
                     response = self.autonomy.process(clean_frame)
                     responses.append(str(response))
                 except Exception as e:
+                    log.error(
+                        "Autonomy code raised exception at t=%.0fs: %s",
+                        frame.t, e
+                    )
                     responses.append(f"exception: {e}")
 
             # Evaluate pass/fail
@@ -395,14 +427,29 @@ class TestRunner:
             scenario_results.append(result)
 
             if result.result == "PASS":
-                log.info("PASS — %s (primary: %s)", scenario_name, result.primary_response)
+                log.info(
+                    "PASS — %s (primary: %s)",
+                    scenario_name, result.primary_response
+                )
             else:
-                log.error("FAIL — %s (primary: %s)", scenario_name, result.primary_response)
+                log.error(
+                    "FAIL — %s (primary: %s)",
+                    scenario_name, result.primary_response
+                )
                 if result.failure_reason:
                     log.error("  reason: %s", result.failure_reason)
 
-        # Generate reports
+        # ── Generate reports ──────────────────────────────────
         log.info("Generating reports...")
+
+        from datetime import datetime
+        clear_run_events()
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+        sat_name = self.hardware.name.replace(" ", "_").lower()
+        report_stem = f"{sat_name}_{timestamp}"
+
+        init_run_log(Path(output_dir) / f"{report_stem}.log")
+
         scenarios_run = [
             {
                 "name": r.name,
@@ -416,13 +463,6 @@ class TestRunner:
             }
             for r in scenario_results
         ]
-
-        from datetime import datetime
-        clear_run_events()
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-        sat_name = self.hardware.name.replace(" ", "_").lower()
-        report_stem = f"{sat_name}_{timestamp}"
-        init_run_log(Path(output_dir) / f"{report_stem}.log")
 
         report = generate_json_report(
             satellite_name=self.hardware.name,
