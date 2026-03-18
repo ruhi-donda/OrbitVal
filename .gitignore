@@ -9,3 +9,6 @@ dist/
 build/
 .env
 ~/.orbitval/
+docs-template/ARCHITECTURE.md
+docs-template/ROADMAP.md
+docs-template/INTERNALS.md
