@@ -128,32 +128,70 @@ def cmd_run(args):
             print(f"✗ Failed to load autonomy module: {e}")
             sys.exit(1)
 
+    # Validate TLE flag pair
+    if bool(args.tle_line1) != bool(args.tle_line2):
+        print("✗ --tle-line1 and --tle-line2 must be used together.")
+        sys.exit(1)
+
     # Build runner
-    runner = TestRunner(
-        config=args.config,
-        autonomy=autonomy,
-        tle_name=args.tle_name,
-        orbit_alt_km=args.orbit_alt,
-        orbit_inc_deg=args.orbit_inc,
-        duration_hours=args.duration,
-        step_seconds=args.step,
-        seed=args.seed,
-        ground_stations=ground_stations,
-    )
+    from orbitval.config.hardware_3u_schema import HardwareConfigError
+    try:
+        runner = TestRunner(
+            config=args.config,
+            autonomy=autonomy,
+            tle_name=args.tle_name,
+            tle_line1=args.tle_line1,
+            tle_line2=args.tle_line2,
+            orbit_alt_km=args.orbit_alt,
+            orbit_inc_deg=args.orbit_inc,
+            duration_hours=args.duration,
+            step_seconds=args.step,
+            seed=args.seed,
+            ground_stations=ground_stations,
+        )
+    except FileNotFoundError:
+        print(f"\n✗ Config file not found: {args.config}")
+        sys.exit(1)
+    except HardwareConfigError as e:
+        print(f"\n✗ Config invalid:\n{e}")
+        sys.exit(1)
+    except ConnectionError as e:
+        print(f"\n✗ TLE fetch failed:\n  {e}")
+        print("  Tip: use --orbit-alt and --orbit-inc to run without a TLE.")
+        sys.exit(1)
+
+    # Backfill altitude/inclination into mission_profile from TLE data when
+    # the user didn't provide explicit --orbit-alt/--orbit-inc flags.
+    # Applies to Mode 1 (live TLE) and Mode 2 (manual TLE strings).
+    # Mode 3 (pre-launch) always has explicit flags, so args.orbit_alt/inc
+    # are already set and this block is skipped.
+    altitude_band_km = args.orbit_alt
+    inclination_deg = args.orbit_inc
+    if runner.tle is not None and altitude_band_km is None:
+        # Inclination: parse from TLE line 2, columns 8-15 (degrees)
+        inclination_deg = float(runner.tle.line2[8:16].strip())
+        # Mean altitude: average of ground track alt_km values
+        track_alts = [p.alt_km for p in runner.orbit.ground_track]
+        if track_alts:
+            altitude_band_km = round(sum(track_alts) / len(track_alts), 1)
 
     # Run scenarios
     scenarios = args.scenarios or ["gps_dropout", "power_brownout", "sensor_noise"]
 
-    report = runner.run(
-        scenarios=scenarios,
-        output_dir=args.output,
-        mission_profile={
-            "orbit_type": args.orbit_type,
-            "altitude_band_km": args.orbit_alt,
-            "inclination_deg": args.orbit_inc,
-            "operational_lifetime_years": None,
-        },
-    )
+    try:
+        report = runner.run(
+            scenarios=scenarios,
+            output_dir=args.output,
+            mission_profile={
+                "orbit_type": args.orbit_type,
+                "altitude_band_km": altitude_band_km,
+                "inclination_deg": inclination_deg,
+                "operational_lifetime_years": None,
+            },
+        )
+    except ValueError as e:
+        print(f"\n✗ Run failed:\n  {e}")
+        sys.exit(1)
 
     # Print summary
     result = report["overall_result"]
@@ -168,6 +206,43 @@ def cmd_run(args):
 
     if result == "FAIL":
         sys.exit(1)
+
+def cmd_verify_report(args):
+    """Verify the integrity hash of an ORF JSON report."""
+    import json
+    import hashlib
+    from pathlib import Path
+
+    path = Path(args.report)
+
+    if not path.exists():
+        print(f"\n✗ Report file not found: {path}")
+        sys.exit(1)
+
+    try:
+        report = json.loads(path.read_text())
+    except json.JSONDecodeError as e:
+        print(f"\n✗ Invalid JSON: {e}")
+        sys.exit(1)
+
+    stored_hash = report.get("test_integrity_hash")
+    if not stored_hash:
+        print("\n✗ Report is missing test_integrity_hash field — cannot verify.")
+        sys.exit(1)
+
+    payload = {k: v for k, v in report.items() if k != "test_integrity_hash"}
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    computed_hash = hashlib.sha256(canonical.encode()).hexdigest()
+
+    if computed_hash == stored_hash:
+        print(f"\n✓ Report verified: {path}")
+        print(f"  Integrity hash: {stored_hash}")
+    else:
+        print(f"\n✗ Hash mismatch — report may have been tampered with: {path}")
+        print(f"  Stored:   {stored_hash}")
+        print(f"  Computed: {computed_hash}")
+        sys.exit(1)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -228,6 +303,16 @@ def main():
         help="Satellite name for TLE fetch (default: ISS (ZARYA))"
     )
     run_parser.add_argument(
+        "--tle-line1", default=None,
+        dest="tle_line1",
+        help="TLE line 1 (use with --tle-line2 for offline/air-gapped mode)"
+    )
+    run_parser.add_argument(
+        "--tle-line2", default=None,
+        dest="tle_line2",
+        help="TLE line 2 (use with --tle-line1 for offline/air-gapped mode)"
+    )
+    run_parser.add_argument(
         "--duration", type=float, default=1.0,
         help="Simulation duration in hours (default: 1.0)"
     )
@@ -263,6 +348,17 @@ def main():
         help="Orbit type for report (default: LEO)"
     )
     run_parser.set_defaults(func=cmd_run)
+
+    # ── orbitval verify-report ────────────────────────────────
+    verify_parser = subparsers.add_parser(
+        "verify-report",
+        help="Verify the integrity hash of an ORF JSON report"
+    )
+    verify_parser.add_argument(
+        "report",
+        help="Path to the ORF JSON report file"
+    )
+    verify_parser.set_defaults(func=cmd_verify_report)
 
     args = parser.parse_args()
     args.func(args)

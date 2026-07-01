@@ -20,6 +20,17 @@ from orbitval.logging import get_logger
 log = get_logger("propagation")
 
 
+def _tle_checksum(line: str) -> int:
+    """Compute TLE line checksum: sum of digits + 1 for each '-', mod 10."""
+    total = 0
+    for ch in line:
+        if ch.isdigit():
+            total += int(ch)
+        elif ch == "-":
+            total += 1
+    return total % 10
+
+
 @dataclass
 class GroundTrackPoint:
     """A single point on the satellite ground track."""
@@ -129,8 +140,6 @@ def propagate_from_params(
     Returns:
         PropagationResult with ground track
     """
-    from astropy.time import Time as AstropyTime
-    from astropy import units as u
     import math
 
     # Earth constants
@@ -145,26 +154,44 @@ def propagate_from_params(
     # Use current time if no epoch provided
     t0 = AstropyTime(epoch) if epoch else AstropyTime.now()
 
-    # Build a synthetic TLE for a circular orbit
-    # This is an approximation sufficient for ground track visualization
-    epoch_str = t0.strftime("%y%j.%f")[:14]
-    inc_str = f"{inc_deg:08.4f}"
-    n_str = f"{n_rev_day:11.8f}"
+    # Build epoch string in TLE format: "YYDDD.FFFFFFFF" (exactly 14 chars)
+    # %y = 2-digit year, %j = 3-digit day-of-year; fraction = seconds since midnight / 86400
+    year_str = t0.strftime("%y")
+    doy_str = t0.strftime("%j")
+    midnight = AstropyTime(
+        t0.strftime("%Y-%m-%d") + "T00:00:00", format="isot", scale="utc"
+    )
+    frac_day = (t0 - midnight).to_value("sec") / 86400.0
+    epoch_str = year_str + doy_str + f"{frac_day:.8f}"[1:]  # "YYDDD.FFFFFFFF" = 14 chars
 
-    tle_line1 = (
-        f"1 99999U 26001A   {epoch_str} "
-        f" .00000000  00000-0  00000-0 0  9991"
+    # Build properly column-aligned synthetic TLE (each line = 68-char body + 1 checksum digit)
+    # TLE line 1 column layout (0-indexed):
+    #   0='1', 1=' ', 2-6=sat_num, 7=classification, 8=' ', 9-16=intl_designator,
+    #   17=' ', 18-31=epoch(14), 32=' ', 33-42=dn_dt2(10), 43=' ',
+    #   44-51=d2n_dt2(8), 52=' ', 53-60=bstar(8), 61=' ', 62=eph_type,
+    #   63=' ', 64-67=elem_set(4), 68=checksum
+    line1_body = (
+        f"1 99999U 26001A   {epoch_str}"
+        f"  .00000000  00000-0  00000-0 0  999"
     )
-    tle_line2 = (
-        f"2 99999 {inc_str}   0.0000   0.0000  0000001   "
-        f"0.0000   0.0000 {n_str}00001"
+    line1 = line1_body + str(_tle_checksum(line1_body))
+
+    # TLE line 2 column layout (0-indexed):
+    #   0='2', 1=' ', 2-6=sat_num(5), 7=' ', 8-15=inc(8.4f), 16=' ',
+    #   17-24=raan(8.4f), 25=' ', 26-32=ecc(7), 33=' ', 34-41=aop(8.4f),
+    #   42=' ', 43-50=ma(8.4f), 51=' ', 52-62=n(11.8f), 63-67=revnum(5), 68=checksum
+    line2_body = (
+        f"2 99999 {inc_deg:8.4f} {0.0:8.4f} 0000001"
+        f" {0.0:8.4f} {0.0:8.4f} {n_rev_day:11.8f}{1:5d}"
     )
-    
-    log.debug("Synthetic TLE generated for circular orbit")
+    line2 = line2_body + str(_tle_checksum(line2_body))
+
+    log.debug("Synthetic TLE line1: %s", line1)
+    log.debug("Synthetic TLE line2: %s", line2)
 
     return propagate_from_tle(
-        tle_line1=tle_line1,
-        tle_line2=tle_line2,
+        tle_line1=line1,
+        tle_line2=line2,
         tle_name="SYNTHETIC",
         duration_hours=duration_hours,
         step_seconds=step_seconds,

@@ -35,7 +35,7 @@ from orbitval.orbits.propagation import propagate_from_tle, propagate_from_param
 from orbitval.orbits.comms_windows import (
     compute_comms_windows, annotate_blackouts, GroundStation
 )
-from orbitval.faults.catalog import get_fault
+from orbitval.faults.catalog import FAULT_REGISTRY, get_fault
 from orbitval.engine.injection import run_injection
 from orbitval.reporting.json_report import generate_json_report
 from orbitval.reporting.pdf_report import generate_pdf_report
@@ -378,9 +378,12 @@ class TestRunner:
             # Build fault scenario
             # Only pass seed to scenarios that accept it
             from inspect import signature
-            scenario_class = __import__(
-                'orbitval.faults.catalog', fromlist=['FAULT_REGISTRY']
-            ).FAULT_REGISTRY[scenario_name]
+            if scenario_name not in FAULT_REGISTRY:
+                raise ValueError(
+                    f"Fault scenario '{scenario_name}' not found. "
+                    f"Available: {list(FAULT_REGISTRY.keys())}"
+                )
+            scenario_class = FAULT_REGISTRY[scenario_name]
             accepted_params = signature(scenario_class.__init__).parameters
             default_kw = {"seed": self.seed} if "seed" in accepted_params else {}
             scenario_kw = kwargs.get(scenario_name, default_kw)
@@ -464,11 +467,20 @@ class TestRunner:
             for r in scenario_results
         ]
 
+        # Collect all injection events across all scenarios into a flat list
+        # for the top-level injection_trace field in the ORF report.
+        injection_trace = [
+            event
+            for r in scenario_results
+            for event in r.fault_trace
+        ]
+
         report = generate_json_report(
             satellite_name=self.hardware.name,
             hardware=self.hardware,
             scenarios_run=scenarios_run,
-            injection_trace=[],
+            injection_trace=injection_trace,
+            comms_windows=self.comms_windows,
             orbit_epoch=self.orbit.epoch,
             duration_s=self.orbit.duration_s,
             seed=self.seed,

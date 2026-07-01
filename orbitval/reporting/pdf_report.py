@@ -157,6 +157,43 @@ def generate_pdf_report(report: dict, output_path: str | Path) -> None:
         ])
     elements.append(_table(scenario_rows, header=True))
 
+    # ── Comms windows ─────────────────────────────────────────
+    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Paragraph("Ground Station Comms Windows", section_style))
+    windows = report.get("comms_windows", [])
+    if not windows:
+        elements.append(Paragraph(
+            "No comms windows — either no ground station was provided "
+            "or this is a pre-launch run without a real TLE.",
+            body_style
+        ))
+    else:
+        total_contact_s = sum(w["duration_s"] for w in windows)
+        sim_duration_s = report.get("simulation", {}).get("duration_s", 0) or 0
+        contact_pct = (
+            100.0 * total_contact_s / sim_duration_s if sim_duration_s > 0 else 0.0
+        )
+        elements.append(Paragraph(
+            f"{len(windows)} window(s) found — "
+            f"{total_contact_s:.0f}s total contact "
+            f"({contact_pct:.1f}% of simulation).",
+            body_style
+        ))
+        elements.append(Spacer(1, 0.2*cm))
+        window_rows = [["Station", "Start (UTC)", "End (UTC)", "Duration (s)", "Max El (°)"]]
+        for w in windows[:15]:
+            window_rows.append([
+                w["ground_station"],
+                w["start_time"],
+                w["end_time"],
+                f"{w['duration_s']:.0f}",
+                f"{w['max_elevation_deg']:.1f}",
+            ])
+        if len(windows) > 15:
+            window_rows.append(["...", f"({len(windows) - 15} more)", "", "", ""])
+        elements.append(_table(window_rows, header=True))
+    elements.append(Spacer(1, 0.3*cm))
+
     # ── Injection trace summary ───────────────────────────────
     elements.append(Paragraph("Injection Trace Summary", section_style))
     trace = report.get("injection_trace", [])

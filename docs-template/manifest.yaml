@@ -28,7 +28,7 @@ repo:
 stack:
   framework: python-package
   language: python
-  orbital_mechanics: [poliastro, astropy]
+  orbital_mechanics: [skyfield, astropy]
   tle_data: celestrak
   fault_injection_engine: python
   reporting: [json, pdf]
@@ -54,9 +54,8 @@ entrypoints:
     file: orbitval/cli.py
     provides:
       - run
+      - validate
       - list-faults
-      - validate-config
-      - report
     notes: "Primary user interface for local runs and artifact generation."
 
 # -----------------------------------------------------------------------------
@@ -127,7 +126,7 @@ phases:
   history:
     - phase: 1
       name: Local MVP framework
-      status: in_progress   # or done
+      status: done
       scope:
         - Orbital simulation engine (TLE or orbital parameters) with ground track + comms windows
         - 3U CubeSat hardware config model (sensors, actuators, power budget)

@@ -49,6 +49,7 @@ def generate_json_report(
     seed: int,
     output_path: str | Path,
     mission_profile: dict | None = None,
+    comms_windows: list | None = None,
 ) -> dict:
     """
     Generate an ORF-compliant JSON report.
@@ -63,6 +64,9 @@ def generate_json_report(
         seed: random seed used for reproducibility
         output_path: where to write the JSON file
         mission_profile: optional mission context dict
+        comms_windows: list of CommsWindow objects (or dicts) from the
+            orbit engine; empty list when no ground stations were provided
+            or when running in pre-launch mode without a real TLE
 
     Returns:
         The report dict (also written to output_path)
@@ -122,7 +126,22 @@ def generate_json_report(
         "overall_result": overall_result,
         "certification_eligible": certification_eligible,
 
-     # Injection trace — full audit trail
+        # Comms windows — ground station visibility intervals
+        # Empty list when no ground stations were provided or in pre-launch mode.
+        "comms_windows": [
+            w if isinstance(w, dict) else {
+                "ground_station": w.ground_station,
+                "start_time": w.start_time,
+                "end_time": w.end_time,
+                "duration_s": w.duration_s,
+                "max_elevation_deg": w.max_elevation_deg,
+                "start_t": w.start_t,
+                "end_t": w.end_t,
+            }
+            for w in (comms_windows or [])
+        ],
+
+        # Injection trace — full audit trail
         "injection_trace": [
             event if isinstance(event, dict) else {
                 "t": event.t,
