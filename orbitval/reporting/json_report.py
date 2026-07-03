@@ -25,7 +25,7 @@ log = get_logger("report")
 
 
 ORF_SPEC_VERSION = "1.0"
-ORBITVAL_VERSION = "1.0.0"
+ORBITVAL_VERSION = "1.1.0"
 
 
 def _compute_integrity_hash(payload: dict) -> str:

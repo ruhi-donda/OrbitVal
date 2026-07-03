@@ -106,7 +106,7 @@ def fetch_tle(satellite_name: str) -> TLERecord:
 
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "OrbitVal/1.0.0"}
+            headers={"User-Agent": "OrbitVal/1.1.0"}
         )
         with urllib.request.urlopen(req, timeout=30) as response:
             raw = response.read().decode("utf-8").strip()

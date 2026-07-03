@@ -261,7 +261,7 @@ def main():
         description="OrbitVal — CubeSat autonomy stress testing framework",
     )
     parser.add_argument(
-        "--version", action="version", version="OrbitVal 1.0.0"
+        "--version", action="version", version="OrbitVal 1.1.0"
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
