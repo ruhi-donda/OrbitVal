@@ -116,6 +116,7 @@ def _evaluate_scenario(
     trace: list,
     seed: int,
     expected_safe_responses: list[str],
+    fault: object | None = None,
 ) -> ScenarioResult:
     """
     Evaluate pass/fail for a scenario based on autonomy responses.
@@ -124,8 +125,15 @@ def _evaluate_scenario(
           during active fault injection.
     Fail: autonomy code only returned "nominal" during fault —
           it didn't detect or respond to the fault.
+
+    Args:
+        fault: the actual fault instance used for injection. Must be
+            passed when the fault was built with non-default args
+            (e.g. real eclipse windows) so the evaluation window
+            matches the injection window. Falls back to a
+            default-constructed instance when omitted.
     """
-    scenario = get_fault(scenario_name)
+    scenario = fault if fault is not None else get_fault(scenario_name)
 
     active_responses = [
         responses[i]
@@ -386,6 +394,14 @@ class TestRunner:
             scenario_class = FAULT_REGISTRY[scenario_name]
             accepted_params = signature(scenario_class.__init__).parameters
             default_kw = {"seed": self.seed} if "seed" in accepted_params else {}
+            # Scenarios that accept eclipse_windows get the real
+            # umbra/penumbra intervals from the propagated orbit,
+            # so the fault fires during actual shadow passages.
+            if "eclipse_windows" in accepted_params and self.orbit.eclipse_periods:
+                default_kw["eclipse_windows"] = [
+                    (p["start_t"], p["end_t"])
+                    for p in self.orbit.eclipse_periods
+                ]
             scenario_kw = kwargs.get(scenario_name, default_kw)
             fault = get_fault(scenario_name, **scenario_kw)
 
@@ -426,6 +442,7 @@ class TestRunner:
                 trace=trace,
                 seed=self.seed,
                 expected_safe_responses=safe,
+                fault=fault,
             )
             scenario_results.append(result)
 
@@ -481,6 +498,7 @@ class TestRunner:
             scenarios_run=scenarios_run,
             injection_trace=injection_trace,
             comms_windows=self.comms_windows,
+            eclipse_periods=self.orbit.eclipse_periods,
             orbit_epoch=self.orbit.epoch,
             duration_s=self.orbit.duration_s,
             seed=self.seed,

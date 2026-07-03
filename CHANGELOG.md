@@ -10,10 +10,11 @@ First stable release. The core framework is complete and ready for real CubeSat 
 
 ### What's in this release
 
-**CLI — three subcommands**
+**CLI — four subcommands**
 - `orbitval run` — full fault injection stress test with structured output
 - `orbitval validate` — satellite.yaml config validation with actionable errors
 - `orbitval list-faults` — fault scenario discovery
+- `orbitval verify-report` — recomputes the integrity hash of an ORF JSON report and compares it to the stored hash; detects any modification after generation
 
 **Three orbit input modes**
 - Mode 1: live TLE fetch from Celestrak (24-hour local cache)
@@ -46,12 +47,12 @@ First stable release. The core framework is complete and ready for real CubeSat 
 - Actuators: reaction_wheel, magnetorquer, thruster
 
 **Test suite**
-- 128 tests across unit, integration, and end-to-end CLI coverage
+- 140 tests across unit, integration, and end-to-end CLI coverage
 - Hardware config boundary cases, TLE cache logic, propagation edge cases, CLI bad-input paths
 
 ### Known limitations
 
-- `eclipse_periods` field in ORF output is always empty — detection not yet implemented
+- Eclipse period detection is not implemented — ORF reports contain no eclipse data
 - PDF report does not include the internal run log; full audit trail is in the JSON report only
 
 ### Upgrading

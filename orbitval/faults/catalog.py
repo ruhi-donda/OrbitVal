@@ -8,6 +8,9 @@ Discovers and returns named fault scenarios by name.
 from orbitval.faults.scenarios.gps_dropout import GpsDropout
 from orbitval.faults.scenarios.power_brownout import PowerBrownout
 from orbitval.faults.scenarios.sensor_noise import SensorNoise
+from orbitval.faults.scenarios.eclipse_power_stress import EclipsePowerStress
+from orbitval.faults.scenarios.comms_blackout import CommsBlackout
+from orbitval.faults.scenarios.star_tracker_failure import StarTrackerFailure
 
 
 # Registry of all free built-in fault scenarios
@@ -15,6 +18,9 @@ FAULT_REGISTRY = {
     "gps_dropout": GpsDropout,
     "power_brownout": PowerBrownout,
     "sensor_noise": SensorNoise,
+    "eclipse_power_stress": EclipsePowerStress,
+    "comms_blackout": CommsBlackout,
+    "star_tracker_failure": StarTrackerFailure,
 }
 
 

@@ -31,6 +31,122 @@ def _tle_checksum(line: str) -> int:
     return total % 10
 
 
+# ── Eclipse geometry ──────────────────────────────────────────
+
+# Earth/sun constants for shadow computation (km)
+R_EARTH_KM = 6371.0
+R_SUN_KM = 696000.0
+AU_KM = 149597870.7
+
+
+def _sun_vector_eci(jd_tt: float) -> tuple[np.ndarray, float]:
+    """
+    Low-precision analytic solar position (Astronomical Almanac).
+    Accurate to ~0.01° — far beyond what umbra entry/exit at
+    minute-level telemetry resolution requires.
+
+    Deliberately analytic rather than skyfield's is_sunlit(): that
+    API requires downloading a JPL ephemeris file (de421.bsp), which
+    would break OrbitVal's offline/air-gapped guarantee.
+
+    Args:
+        jd_tt: Julian date (TT)
+
+    Returns:
+        (unit vector Earth→Sun in ECI, Earth–Sun distance in km)
+    """
+    n = jd_tt - 2451545.0
+    L = np.radians((280.460 + 0.9856474 * n) % 360.0)   # mean longitude
+    g = np.radians((357.528 + 0.9856003 * n) % 360.0)   # mean anomaly
+    lam = L + np.radians(1.915) * np.sin(g) + np.radians(0.020) * np.sin(2 * g)
+    eps = np.radians(23.439 - 0.0000004 * n)             # obliquity
+
+    sun_hat = np.array([
+        np.cos(lam),
+        np.cos(eps) * np.sin(lam),
+        np.sin(eps) * np.sin(lam),
+    ])
+    dist_km = (1.00014 - 0.01671 * np.cos(g) - 0.00014 * np.cos(2 * g)) * AU_KM
+    return sun_hat, dist_km
+
+
+def _shadow_state(r_sat_km: np.ndarray, jd_tt: float) -> str:
+    """
+    Classify a satellite position as 'sunlit', 'penumbra', or 'umbra'
+    using the standard conical shadow model: compare the apparent
+    angular radii of the Earth and Sun as seen from the satellite.
+    """
+    sun_hat, sun_dist = _sun_vector_eci(jd_tt)
+    sun_from_sat = sun_hat * sun_dist - r_sat_km
+    earth_from_sat = -r_sat_km
+
+    r_mag = np.linalg.norm(earth_from_sat)
+    s_mag = np.linalg.norm(sun_from_sat)
+
+    theta_e = np.arcsin(min(1.0, R_EARTH_KM / r_mag))    # Earth angular radius
+    theta_s = np.arcsin(min(1.0, R_SUN_KM / s_mag))      # Sun angular radius
+    cos_psi = np.dot(earth_from_sat, sun_from_sat) / (r_mag * s_mag)
+    psi = np.arccos(np.clip(cos_psi, -1.0, 1.0))         # Earth–Sun separation
+
+    if psi < theta_e - theta_s:
+        return "umbra"
+    if psi < theta_e + theta_s:
+        return "penumbra"
+    return "sunlit"
+
+
+def _compute_eclipse_periods(
+    satellite: EarthSatellite,
+    times,
+    step_seconds: float,
+) -> list[dict]:
+    """
+    Scan the propagation time array and extract contiguous
+    umbra/penumbra intervals as eclipse period dicts.
+    """
+    time_list = list(times)
+    states = []
+    for t in time_list:
+        r_sat = np.asarray(satellite.at(t).position.km)
+        states.append(_shadow_state(r_sat, t.tt))
+
+    periods = []
+    current_state = "sunlit"
+    start_idx = None
+
+    for i, state in enumerate(states):
+        if state != current_state:
+            if current_state != "sunlit" and start_idx is not None:
+                periods.append({
+                    "type": current_state,
+                    "start_time": time_list[start_idx].utc_iso(),
+                    "end_time": time_list[i].utc_iso(),
+                    "start_t": start_idx * step_seconds,
+                    "end_t": i * step_seconds,
+                    "duration_s": (i - start_idx) * step_seconds,
+                })
+            start_idx = i if state != "sunlit" else None
+            current_state = state
+
+    # Interval still open at end of simulation
+    if current_state != "sunlit" and start_idx is not None:
+        last = len(states) - 1
+        periods.append({
+            "type": current_state,
+            "start_time": time_list[start_idx].utc_iso(),
+            "end_time": time_list[last].utc_iso(),
+            "start_t": start_idx * step_seconds,
+            "end_t": last * step_seconds,
+            "duration_s": (last - start_idx) * step_seconds,
+        })
+
+    log.info(
+        "Eclipse scan: %d period(s) found (%.0fs total in shadow)",
+        len(periods), sum(p["duration_s"] for p in periods)
+    )
+    return periods
+
+
 @dataclass
 class GroundTrackPoint:
     """A single point on the satellite ground track."""
@@ -109,11 +225,14 @@ def propagate_from_tle(
             alt_km=float(subpoint.elevation.km),
         ))
 
+    # Eclipse periods — umbra/penumbra intervals from shadow geometry
+    eclipse_periods = _compute_eclipse_periods(satellite, times, step_seconds)
+
     return PropagationResult(
         epoch=epoch.utc_iso(),
         duration_s=duration_hours * 3600,
         ground_track=ground_track,
-        eclipse_periods=[],   # Phase 1.1
+        eclipse_periods=eclipse_periods,
         comms_windows=[],     # populated by comms_windows.py
     )
 

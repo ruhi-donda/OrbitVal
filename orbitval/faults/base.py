@@ -36,7 +36,29 @@ class TelemetryFrame:
     battery_charge_wh: float          # current battery charge
     solar_power_w: float              # current solar input watts
     reaction_wheel_speed_rpm: float   # current wheel speed
+    ground_contact: bool = True       # False during comms blackout
+    attitude_qw: float = 1.0          # attitude quaternion (scalar-first;
+    attitude_qx: float = 0.0          #   identity = no rotation)
+    attitude_qy: float = 0.0
+    attitude_qz: float = 0.0
+    attitude_valid: bool = True       # False if attitude solution unreliable
+    temperature_c: float = 20.0       # bus temperature
     flags: dict = field(default_factory=dict)  # arbitrary metadata
+
+
+class WindowedFault:
+    """
+    Shared base for time-windowed fault scenarios.
+    Provides the t_start/duration_s window and is_active() so each
+    scenario doesn't reimplement the same logic.
+    """
+
+    def __init__(self, t_start: float = 60.0, duration_s: float = 120.0):
+        self.t_start = t_start
+        self.duration_s = duration_s
+
+    def is_active(self, t: float) -> bool:
+        return self.t_start <= t <= self.t_start + self.duration_s
 
 
 @runtime_checkable

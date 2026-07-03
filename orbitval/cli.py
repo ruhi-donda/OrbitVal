@@ -98,6 +98,10 @@ def cmd_run(args):
                 return "safe_mode"
             if telemetry.solar_power_w < 1.0:
                 return "reduced_ops"
+            if not telemetry.ground_contact:
+                return "reduced_ops"
+            if not telemetry.star_tracker_available or not telemetry.attitude_valid:
+                return "failover"
             mag = math.sqrt(
                 telemetry.magnetometer_x ** 2 +
                 telemetry.magnetometer_y ** 2 +
@@ -210,8 +214,8 @@ def cmd_run(args):
 def cmd_verify_report(args):
     """Verify the integrity hash of an ORF JSON report."""
     import json
-    import hashlib
     from pathlib import Path
+    from orbitval.reporting.json_report import _compute_integrity_hash
 
     path = Path(args.report)
 
@@ -221,8 +225,16 @@ def cmd_verify_report(args):
 
     try:
         report = json.loads(path.read_text())
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"\n✗ Invalid JSON: {e}")
+        sys.exit(1)
+    except OSError as e:
+        print(f"\n✗ Could not read report file: {e}")
+        sys.exit(1)
+
+    if not isinstance(report, dict):
+        print(f"\n✗ Not an ORF report — expected a JSON object, "
+              f"got {type(report).__name__}.")
         sys.exit(1)
 
     stored_hash = report.get("test_integrity_hash")
@@ -231,8 +243,7 @@ def cmd_verify_report(args):
         sys.exit(1)
 
     payload = {k: v for k, v in report.items() if k != "test_integrity_hash"}
-    canonical = json.dumps(payload, sort_keys=True, default=str)
-    computed_hash = hashlib.sha256(canonical.encode()).hexdigest()
+    computed_hash = _compute_integrity_hash(payload)
 
     if computed_hash == stored_hash:
         print(f"\n✓ Report verified: {path}")
@@ -250,7 +261,7 @@ def main():
         description="OrbitVal — CubeSat autonomy stress testing framework",
     )
     parser.add_argument(
-        "--version", action="version", version="OrbitVal 0.1.0"
+        "--version", action="version", version="OrbitVal 1.0.0"
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)

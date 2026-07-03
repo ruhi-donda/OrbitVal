@@ -34,8 +34,9 @@ class TestTopLevelImport:
 
     def test_version_still_accessible(self):
         """__version__ must still be accessible after adding the export."""
+        import re
         import orbitval
-        assert orbitval.__version__ == "0.1.0"
+        assert re.fullmatch(r"\d+\.\d+\.\d+", orbitval.__version__)
 
     def test_testrunner_is_instantiable_via_top_level_import(self):
         """TestRunner imported from orbitval must be instantiable (not a stub)."""

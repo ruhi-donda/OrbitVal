@@ -81,6 +81,22 @@ Available fault scenarios:
   [FREE] sensor_noise v1.0.0
          Amplified gaussian noise injected into magnetometer and GPS readings.
          Tests autonomy code robustness against degraded sensor quality.
+
+  [FREE] eclipse_power_stress v1.0.0
+         Solar input collapse and thermal drop while the satellite passes
+         through Earth's shadow. Tests autonomous power management across
+         eclipse entry and exit.
+
+  [FREE] comms_blackout v1.0.0
+         Total loss of ground contact for a configurable duration. Tests
+         fully autonomous operation during the blackout and recovery
+         detection on reacquisition.
+
+  [FREE] star_tracker_failure v1.0.0
+         Attitude determination failure — the star tracker feeds bad or
+         null quaternion data. Tests that autonomy code flags degraded
+         attitude confidence rather than silently trusting invalid
+         attitude solutions.
 ```
 
 ---
@@ -209,6 +225,9 @@ orbitval run --orbit-alt 550 --orbit-inc 53.0
 | `gps_dropout` | FREE | Complete GPS signal loss for a configurable duration |
 | `power_brownout` | FREE | Sudden reduction in battery charge and solar input |
 | `sensor_noise` | FREE | Amplified gaussian noise injected into magnetometer and GPS |
+| `eclipse_power_stress` | FREE | Solar collapse + thermal drop during real umbra/penumbra passages computed from the orbit |
+| `comms_blackout` | FREE | Total ground contact loss — tests autonomous operation and recovery on reacquisition |
+| `star_tracker_failure` | FREE | Bad or null quaternion data — tests that autonomy flags degraded attitude confidence |
 
 Hardware-specific fault scenario packs (reaction wheel degradation, star tracker failures, etc.) are available for commercial operators. University CubeSat teams get everything free — use your `.edu` email.
 
@@ -256,6 +275,7 @@ The JSON report includes:
 - Full injection trace — every fault event with timestamp and modified fields
 - Mission context — orbit type, altitude, inclination, hardware specs
 - Comms window analysis — how much of the simulation had no ground contact
+- Eclipse periods — umbra/penumbra intervals from Earth shadow geometry
 - `test_integrity_hash` — SHA-256 hash of all inputs and outputs
 
 The integrity hash makes every ORF report a **verifiable attestation**. Any modification after generation invalidates the hash.
@@ -270,6 +290,11 @@ orbitval list-faults
 
 orbitval validate --config <path>
   Validate a satellite.yaml config file
+
+orbitval verify-report <path>
+  Verify the integrity hash of an ORF JSON report.
+  Exits 0 with ✓ if the hash matches, exits 1 with ✗ if the
+  report was modified after generation.
 
 orbitval run
   --config <path>           satellite.yaml path (default: satellite.yaml)
@@ -310,9 +335,9 @@ TLE data from [Celestrak](https://celestrak.org) with local caching and offline 
 
 ## Roadmap
 
-- [ ] Eclipse period detection
-- [ ] Scenario config file (`scenario.yaml`)
-- [ ] More fault scenarios (communication blackout, star tracker failure)
+- [x] Eclipse period detection (umbra/penumbra shadow geometry)
+- [x] More fault scenarios (eclipse power stress, communication blackout, star tracker failure)
+- [ ] `scenario.yaml` CLI wiring (schema + validation exist; `--scenario-config` flag pending)
 - [ ] Constellation simulation (multi-satellite)
 - [ ] Optional cloud dashboard for report sharing
 
@@ -320,7 +345,7 @@ TLE data from [Celestrak](https://celestrak.org) with local caching and offline 
 
 ## Known limitations
 
-- **Eclipse period detection** — the `eclipse_periods` field exists in every ORF report but is always empty. Detection is not yet implemented; if your autonomy code handles eclipse entry as a distinct fault mode, test it separately.
+- **Thermal model is simplified** — the `eclipse_power_stress` scenario models a flat bus-temperature drop in shadow, not a full thermal simulation with component-level gradients.
 - **PDF audit trail** — the PDF report is a human-readable mission readiness summary. The full internal run log (every injected fault event, timestamped) is in the JSON report only.
 
 ---

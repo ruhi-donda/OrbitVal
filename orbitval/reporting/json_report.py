@@ -25,7 +25,7 @@ log = get_logger("report")
 
 
 ORF_SPEC_VERSION = "1.0"
-ORBITVAL_VERSION = "0.1.0"
+ORBITVAL_VERSION = "1.0.0"
 
 
 def _compute_integrity_hash(payload: dict) -> str:
@@ -50,6 +50,7 @@ def generate_json_report(
     output_path: str | Path,
     mission_profile: dict | None = None,
     comms_windows: list | None = None,
+    eclipse_periods: list | None = None,
 ) -> dict:
     """
     Generate an ORF-compliant JSON report.
@@ -140,6 +141,10 @@ def generate_json_report(
             }
             for w in (comms_windows or [])
         ],
+
+        # Eclipse periods — umbra/penumbra intervals from shadow geometry.
+        # Empty when the orbit never crosses Earth's shadow in the window.
+        "eclipse_periods": eclipse_periods or [],
 
         # Injection trace — full audit trail
         "injection_trace": [
