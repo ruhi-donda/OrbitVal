@@ -20,12 +20,52 @@ from pathlib import Path
 from orbitval.faults.base import TelemetryFrame
 from orbitval.engine.injection import InjectionEvent
 from orbitval.config.hardware_3u_schema import HardwareConfig
+from orbitval.registry import append_entry
 from orbitval.logging import get_logger, get_run_events
 log = get_logger("report")
 
 
 ORF_SPEC_VERSION = "1.0"
 ORBITVAL_VERSION = "1.1.0"
+
+# Required top-level fields and expected types, per ARCHITECTURE.md
+# "ORF Spec — Report Format Fields / Required fields".
+ORF_REQUIRED_FIELDS: dict[str, type] = {
+    "orbitval_version": str,
+    "orf_spec_version": str,
+    "schema_version": str,
+    "report_id": str,
+    "generated_at": str,
+    "test_integrity_hash": str,
+    "mission_profile": dict,
+    "regulatory_jurisdiction": str,
+    "applicable_standard": str,
+    "hardware_generation": str,
+    "form_factor": str,
+    "scenarios_run": list,
+    "overall_result": str,
+    "certification_eligible": bool,
+}
+
+
+def validate_orf_schema(report: dict) -> list[str]:
+    """
+    Check a parsed report against the ORF required fields.
+
+    Structure only — content integrity is the hash's job. Returns a
+    list of problems; empty means the document is structurally a
+    valid ORF report.
+    """
+    problems = []
+    for field, expected_type in ORF_REQUIRED_FIELDS.items():
+        if field not in report:
+            problems.append(f"missing required field: {field}")
+        elif not isinstance(report[field], expected_type):
+            problems.append(
+                f"field '{field}' should be {expected_type.__name__}, "
+                f"got {type(report[field]).__name__}"
+            )
+    return problems
 
 
 def _compute_integrity_hash(payload: dict) -> str:
@@ -172,4 +212,15 @@ def generate_json_report(
 
     log.info("JSON report written: %s", output)
     log.info("Integrity hash: %s...", integrity_hash[:16])
+
+    # Register the hash in the local append-only registry so the
+    # report's provenance can be checked later (verify-report).
+    entry = append_entry(
+        report_hash=integrity_hash,
+        satellite_id=satellite_name,
+    )
+    log.info(
+        "Hash registered in append-only registry (prev: %s...)",
+        entry["prev_entry_hash"][:16],
+    )
     return payload

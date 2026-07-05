@@ -175,6 +175,13 @@ def init_run_log(output_path: Path) -> None:
     log_path = Path(output_path).with_suffix(".log")
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Detach the previous run's file handler so this run's events
+    # don't leak into an earlier run's audit log.
+    if _log_file_handler is not None:
+        for logger in _loggers.values():
+            logger.removeHandler(_log_file_handler)
+        _log_file_handler.close()
+
     handler = logging.FileHandler(log_path, mode="w", encoding="utf-8")
     handler.setFormatter(OrbitValFormatter(colorize=False))
     handler.setLevel(logging.DEBUG)

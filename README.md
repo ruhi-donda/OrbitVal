@@ -280,6 +280,23 @@ The JSON report includes:
 
 The integrity hash makes every ORF report a **verifiable attestation**. Any modification after generation invalidates the hash.
 
+### Hash registry (local, append-only)
+
+Every generated report's hash is also appended automatically to a local
+append-only registry (`.orbitval/registry.jsonl` by default, overridable
+with the `ORBITVAL_REGISTRY` environment variable). Each entry is chained
+to the previous one via `prev_entry_hash` — modeled on Certificate
+Transparency — so editing, reordering, or deleting any past entry breaks
+the chain for everything after it. `orbitval verify-report` checks both
+the report's internal hash **and** its registry provenance;
+`orbitval registry verify` checks the full chain independently.
+
+**Scope:** the local registry proves provenance against local history —
+a tampered or back-dated report can be detected against the recorded
+chain. It does **not** prevent someone from deleting or replacing the
+entire registry file. That requires a hosted/remote registry (planned;
+see ARCHITECTURE.md "Hash registry design").
+
 ---
 
 ## CLI reference
@@ -291,10 +308,17 @@ orbitval list-faults
 orbitval validate --config <path>
   Validate a satellite.yaml config file
 
-orbitval verify-report <path>
-  Verify the integrity hash of an ORF JSON report.
-  Exits 0 with ✓ if the hash matches, exits 1 with ✗ if the
-  report was modified after generation.
+orbitval verify-report <path> [--registry <path>]
+  Verify an ORF JSON report. Two independent checks:
+    internal hash       — valid / invalid (report modified after generation)
+    registry provenance — confirmed / not found / chain broken
+  Exits 0 only if the hash matches AND the report is registered
+  in an intact local hash registry.
+
+orbitval registry verify [--registry <path>]
+  Verify the full chain integrity of the local append-only hash
+  registry, independent of any single report. Exits 1 if the
+  registry is missing or the chain is broken.
 
 orbitval run
   --config <path>           satellite.yaml path (default: satellite.yaml)
@@ -347,6 +371,7 @@ TLE data from [Celestrak](https://celestrak.org) with local caching and offline 
 
 - **Thermal model is simplified** — the `eclipse_power_stress` scenario models a flat bus-temperature drop in shadow, not a full thermal simulation with component-level gradients.
 - **PDF audit trail** — the PDF report is a human-readable mission readiness summary. The full internal run log (every injected fault event, timestamped) is in the JSON report only.
+- **Hash registry is local-only** — the append-only registry detects tampering with individual entries and reports, but cannot detect deletion or wholesale replacement of the registry file itself. A hosted/remote registry with a witnessed chain head (see ARCHITECTURE.md) is required to close that gap and is planned, not yet built.
 
 ---
 

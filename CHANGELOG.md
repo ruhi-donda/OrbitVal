@@ -4,6 +4,35 @@ All notable changes to OrbitVal are documented here.
 
 ---
 
+## [1.1.0] — 2026-07-03
+
+**Append-only hash registry (local) — report attestation**
+- New `orbitval/registry.py` — local append-only JSONL registry of report hashes, Certificate Transparency model. Each entry (`report_hash`, `timestamp`, `satellite_id`, `prev_entry_hash`) is chained to the previous one, so altering, reordering, or deleting any past entry breaks the chain for everything after it.
+- Report generation now automatically appends each report's `test_integrity_hash` to the registry (default `.orbitval/registry.jsonl`, overridable via `ORBITVAL_REGISTRY` or `--registry`).
+- New `orbitval registry verify` command — checks full chain integrity independent of any single report.
+- Known gap (documented, deliberately not half-built): the local registry cannot detect deletion or wholesale replacement of the registry file itself; that requires the hosted registry (future work).
+
+**verify-report — dual-check output and schema validation**
+- `orbitval verify-report` now reports two independent results: internal hash (valid/invalid) and registry provenance (confirmed/not found/chain broken). Exits 0 only when both pass.
+- Reports are now validated against the ORF schema (required fields, expected types) before verification — a self-consistent hash on a non-ORF document is rejected instead of being reported as verified.
+
+**Eclipse detection**
+- Orbit propagation now computes umbra/penumbra intervals from Earth shadow geometry; `eclipse_periods` is embedded in the ORF report and fed to eclipse-aware fault scenarios.
+
+**Three new fault scenarios**
+- `eclipse_power_stress` — solar power loss and battery drain during real shadow passages
+- `comms_blackout` — ground contact loss; tests reduced-ops behavior
+- `star_tracker_failure` — attitude determination loss (full and degraded modes)
+
+**Scenario configuration file**
+- New `scenario.yaml` schema (`orbitval/config/scenario_schema.py`) — declare scenarios and parameters in a validated config file instead of CLI flags. Valid names/parameters derive from the fault registry automatically.
+
+**Fixes**
+- ORF reports now actually embed the run's audit trail: the `run_log` field and the `.log` file previously missed all scenario events because the event buffer was cleared (and the log file opened) only at report-generation time. Both now start before scenarios execute.
+- A second `run()` in the same process no longer appends its log events to the previous run's `.log` file.
+
+---
+
 ## [1.0.0] — 2026-07-01
 
 First stable release. The core framework is complete and ready for real CubeSat autonomy testing.

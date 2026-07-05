@@ -65,6 +65,13 @@ class ResponsiveAutonomy:
         pass
 
 
+@pytest.fixture(autouse=True)
+def _isolated_registry(tmp_path, monkeypatch):
+    """Point the hash registry at a per-test file so tests never
+    read from or append to a real local registry."""
+    monkeypatch.setenv("ORBITVAL_REGISTRY", str(tmp_path / "registry.jsonl"))
+
+
 @pytest.fixture
 def prelaunch_runner():
     """A TestRunner in pre-launch mode with responsive autonomy —

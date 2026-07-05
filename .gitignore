@@ -8,7 +8,8 @@ reports/
 dist/
 build/
 .env
-~/.orbitval/
+.orbitval/
+.coverage
 docs-template/ARCHITECTURE.md
 docs-template/ROADMAP.md
 docs-template/INTERNALS.md

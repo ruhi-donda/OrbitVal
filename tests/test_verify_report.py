@@ -16,6 +16,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from orbitval.cli import cmd_verify_report
+from orbitval.reporting.json_report import _compute_integrity_hash
 
 SATELLITE_YAML = str(Path(__file__).parent.parent / "satellite.yaml")
 TLE1 = "1 25544U 98067A   24001.50000000  .00001000  00000+0  10000-4 0  9991"
@@ -144,3 +145,43 @@ class TestVerifyReportBadInputs:
         out = capsys.readouterr().out
         assert "✗" in out
         assert "test_integrity_hash" in out
+
+
+class TestVerifyReportSchema:
+    """A self-consistent hash on a non-ORF document must be rejected."""
+
+    def test_non_orf_hash_consistent_file_rejected(self, tmp_path, capsys):
+        payload = {"totally": "not an ORF report", "foo": 42}
+        payload["test_integrity_hash"] = _compute_integrity_hash(payload)
+        fake = tmp_path / "fake.json"
+        fake.write_text(json.dumps(payload))
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_verify_report(_make_args(str(fake)))
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "Not a valid ORF report" in out
+        assert "missing required field" in out
+
+    def test_wrong_field_type_rejected(self, tmp_path, capsys):
+        report_path = _fresh_report(tmp_path)
+        data = json.loads(report_path.read_text())
+        data["scenarios_run"] = "not-a-list"
+        # Keep the hash self-consistent so only the schema check trips
+        del data["test_integrity_hash"]
+        data["test_integrity_hash"] = _compute_integrity_hash(data)
+        report_path.write_text(json.dumps(data))
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_verify_report(_make_args(str(report_path)))
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "Not a valid ORF report" in out
+        assert "scenarios_run" in out
+
+    def test_real_report_passes_schema(self, tmp_path, capsys):
+        report_path = _fresh_report(tmp_path)
+        cmd_verify_report(_make_args(str(report_path)))  # no exit
+        out = capsys.readouterr().out
+        assert "Not a valid ORF report" not in out
+        assert "✓" in out

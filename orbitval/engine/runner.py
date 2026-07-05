@@ -375,6 +375,18 @@ class TestRunner:
             "reduced_ops",
         ]
 
+        # Start the run's audit trail BEFORE scenarios execute, so the
+        # events they log end up in both the .log file and the report's
+        # embedded run_log. Clearing here (not at report time) is what
+        # keeps each run's trail scoped to that run.
+        from datetime import datetime
+        clear_run_events()
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+        sat_name = self.hardware.name.replace(" ", "_").lower()
+        report_stem = f"{sat_name}_{timestamp}"
+
+        init_run_log(Path(output_dir) / f"{report_stem}.log")
+
         scenario_results = []
 
         for scenario_name in scenarios:
@@ -461,14 +473,6 @@ class TestRunner:
 
         # ── Generate reports ──────────────────────────────────
         log.info("Generating reports...")
-
-        from datetime import datetime
-        clear_run_events()
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-        sat_name = self.hardware.name.replace(" ", "_").lower()
-        report_stem = f"{sat_name}_{timestamp}"
-
-        init_run_log(Path(output_dir) / f"{report_stem}.log")
 
         scenarios_run = [
             {

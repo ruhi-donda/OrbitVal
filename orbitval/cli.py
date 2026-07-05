@@ -215,7 +215,9 @@ def cmd_verify_report(args):
     """Verify the integrity hash of an ORF JSON report."""
     import json
     from pathlib import Path
-    from orbitval.reporting.json_report import _compute_integrity_hash
+    from orbitval.reporting.json_report import (
+        _compute_integrity_hash, validate_orf_schema
+    )
 
     path = Path(args.report)
 
@@ -237,6 +239,15 @@ def cmd_verify_report(args):
               f"got {type(report).__name__}.")
         sys.exit(1)
 
+    # Schema first — a self-consistent hash on a non-ORF document
+    # must not be reported as "verified".
+    problems = validate_orf_schema(report)
+    if problems:
+        print(f"\n✗ Not a valid ORF report: {path}")
+        for problem in problems:
+            print(f"  - {problem}")
+        sys.exit(1)
+
     stored_hash = report.get("test_integrity_hash")
     if not stored_hash:
         print("\n✗ Report is missing test_integrity_hash field — cannot verify.")
@@ -244,14 +255,58 @@ def cmd_verify_report(args):
 
     payload = {k: v for k, v in report.items() if k != "test_integrity_hash"}
     computed_hash = _compute_integrity_hash(payload)
+    internal_valid = computed_hash == stored_hash
 
-    if computed_hash == stored_hash:
+    if internal_valid:
         print(f"\n✓ Report verified: {path}")
         print(f"  Integrity hash: {stored_hash}")
     else:
         print(f"\n✗ Hash mismatch — report may have been tampered with: {path}")
         print(f"  Stored:   {stored_hash}")
         print(f"  Computed: {computed_hash}")
+
+    # Registry provenance — is this hash in the local append-only
+    # registry, and is the chain leading to it intact?
+    from orbitval.registry import check_provenance, resolve_registry_path
+    registry_path = resolve_registry_path(getattr(args, "registry", None))
+    provenance, entry = check_provenance(stored_hash, registry_path)
+
+    print(f"\n  Internal hash:       {'valid' if internal_valid else 'invalid'}")
+    if provenance == "confirmed":
+        print(f"  Registry provenance: confirmed "
+              f"(registered {entry['timestamp']})")
+    elif provenance == "not found":
+        print(f"  Registry provenance: not found "
+              f"(no entry in {registry_path})")
+    else:
+        print(f"  Registry provenance: chain broken "
+              f"({registry_path} failed integrity check — "
+              f"run 'orbitval registry verify')")
+
+    if not internal_valid or provenance != "confirmed":
+        sys.exit(1)
+
+
+def cmd_registry(args):
+    """Registry subcommands — currently only 'verify'."""
+    from orbitval.registry import verify_chain, resolve_registry_path
+
+    path = resolve_registry_path(args.registry)
+
+    if not path.exists():
+        print(f"\n✗ No registry found at {path} — "
+              f"nothing has been registered yet.")
+        sys.exit(1)
+
+    result = verify_chain(path)
+    if result.ok:
+        print(f"\n✓ Registry chain intact: "
+              f"{result.entry_count} entries ({path})")
+    else:
+        print(f"\n✗ Registry chain BROKEN at entry "
+              f"{result.broken_at} of {result.entry_count} ({path})")
+        print(f"  {result.error}")
+        print("  Entries at or after the break cannot be trusted.")
         sys.exit(1)
 
 
@@ -369,7 +424,31 @@ def main():
         "report",
         help="Path to the ORF JSON report file"
     )
+    verify_parser.add_argument(
+        "--registry", default=None,
+        help="Path to registry file "
+             "(default: $ORBITVAL_REGISTRY or .orbitval/registry.jsonl)"
+    )
     verify_parser.set_defaults(func=cmd_verify_report)
+
+    # ── orbitval registry ─────────────────────────────────────
+    registry_parser = subparsers.add_parser(
+        "registry",
+        help="Append-only report hash registry operations"
+    )
+    registry_sub = registry_parser.add_subparsers(
+        dest="registry_command", required=True
+    )
+    registry_verify_parser = registry_sub.add_parser(
+        "verify",
+        help="Verify full chain integrity of the local hash registry"
+    )
+    registry_verify_parser.add_argument(
+        "--registry", default=None,
+        help="Path to registry file "
+             "(default: $ORBITVAL_REGISTRY or .orbitval/registry.jsonl)"
+    )
+    registry_verify_parser.set_defaults(func=cmd_registry)
 
     args = parser.parse_args()
     args.func(args)
