@@ -13,7 +13,7 @@
 schema_version: 1
 name: OrbitVal
 type: library     # python package
-version: 0.1.0
+version: 1.1.1
 description: Local installed testing framework for CubeSat autonomy software (3U v1) with orbital simulation, fault injection, and JSON+PDF reporting.
 
 owner:
@@ -29,6 +29,7 @@ stack:
   framework: python-package
   language: python
   orbital_mechanics: [skyfield, astropy]
+  registry: append-only-jsonl-local
   tle_data: celestrak
   fault_injection_engine: python
   reporting: [json, pdf]
@@ -57,6 +58,7 @@ entrypoints:
       - validate
       - list-faults
       - verify-report
+      - registry verify
     notes: "Primary user interface for local runs and artifact generation."
 
 # -----------------------------------------------------------------------------
@@ -91,6 +93,11 @@ modules:
     owns: [json_report, pdf_report]
     depends_on: [engine, config, faults, orbits]
     notes: "Produces reproducible artifacts for mission readiness reviews."
+  registry:
+    file: orbitval/registry.py
+    owns: [hash_registry]
+    depends_on: []
+    notes: "Local append-only, hash-chained log of report integrity hashes." 
 
 # -----------------------------------------------------------------------------
 # Services

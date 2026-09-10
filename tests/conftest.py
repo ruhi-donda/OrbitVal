@@ -72,14 +72,22 @@ def _isolated_registry(tmp_path, monkeypatch):
     monkeypatch.setenv("ORBITVAL_REGISTRY", str(tmp_path / "registry.jsonl"))
 
 
+# Fixed epoch so the suite does not depend on the day it runs. Without
+# it, pre-launch runs start at the wall clock and the solar geometry —
+# and therefore eclipse_periods and every eclipse-aware fault window —
+# changes from run to run.
+TEST_EPOCH = "2026-09-08T00:00:00"
+
+
 @pytest.fixture
 def prelaunch_runner():
     """A TestRunner in pre-launch mode with responsive autonomy —
-    no network access needed."""
+    no network access needed, and reproducible across days."""
     from orbitval.engine.runner import TestRunner
     return TestRunner(
         config=SATELLITE_YAML,
         autonomy=ResponsiveAutonomy(),
         orbit_alt_km=550.0,
         orbit_inc_deg=53.0,
+        epoch=TEST_EPOCH,
     )

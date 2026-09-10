@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # The suite must not reach the network: every orbit path is either a
+      # literal TLE or a synthesized pre-launch orbit, and fetch_tle is mocked.
+      - name: Test
+        run: pytest --cov=orbitval --cov-report=term-missing --cov-fail-under=90
+
+      - name: Smoke-test the CLI
+        run: |
+          python -m orbitval --version
+          python -m orbitval list-faults
+          python -m orbitval validate --config satellite.yaml
+          python -m orbitval run \
+            --orbit-alt 550 --orbit-inc 53.0 \
+            --epoch 2026-09-08T00:00:00Z \
+            --scenarios gps_dropout \
+            --output "$RUNNER_TEMP/reports" \
+            --registry "$RUNNER_TEMP/registry.jsonl"
+          python -m orbitval registry verify --registry "$RUNNER_TEMP/registry.jsonl"

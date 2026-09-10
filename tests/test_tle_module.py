@@ -10,7 +10,7 @@ import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -56,7 +56,7 @@ class TestCacheFreshness:
 
     def test_stale_cache_is_not_fresh(self, tmp_path):
         cache = tmp_path / "tle.json"
-        stale_time = (datetime.utcnow() - timedelta(hours=25)).isoformat()
+        stale_time = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25)).isoformat()
         cache.write_text(json.dumps({
             "name": "ISS", "line1": TLE1, "line2": TLE2,
             "fetched_at": stale_time,
@@ -65,7 +65,7 @@ class TestCacheFreshness:
 
     def test_fresh_cache_is_fresh(self, tmp_path):
         cache = tmp_path / "tle.json"
-        fresh_time = datetime.utcnow().isoformat()
+        fresh_time = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         cache.write_text(json.dumps({
             "name": "ISS", "line1": TLE1, "line2": TLE2,
             "fetched_at": fresh_time,
@@ -81,7 +81,7 @@ class TestCacheFreshness:
 class TestFetchTleCache:
     def test_cache_hit_skips_network(self, tmp_path):
         """A fresh cache entry must be returned without any HTTP call."""
-        fresh_time = datetime.utcnow().isoformat()
+        fresh_time = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
         cache_data = json.dumps({
             "name": "ISS (ZARYA)", "line1": TLE1, "line2": TLE2,
             "fetched_at": fresh_time,

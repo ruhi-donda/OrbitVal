@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
 from skyfield.api import load, EarthSatellite, wgs84
-from skyfield.positionlib import Geocentric
 from astropy.time import Time as AstropyTime
 from orbitval.logging import get_logger
 log = get_logger("propagation")
@@ -157,22 +156,12 @@ class GroundTrackPoint:
 
 
 @dataclass
-class CommsWindow:
-    """A visibility window between satellite and ground station."""
-    start_time: str  # ISO 8601
-    end_time: str    # ISO 8601
-    duration_s: float
-    max_elevation_deg: float
-
-
-@dataclass
 class PropagationResult:
     """Full output of an orbital propagation run."""
     epoch: str                                    # ISO 8601 start time
     duration_s: float
     ground_track: list[GroundTrackPoint]
     eclipse_periods: list[dict] = field(default_factory=list)
-    comms_windows: list[CommsWindow] = field(default_factory=list)
 
 
 def propagate_from_tle(
@@ -181,7 +170,6 @@ def propagate_from_tle(
     tle_name: str = "SATELLITE",
     duration_hours: float = 24.0,
     step_seconds: float = 60.0,
-    ground_station: Optional[dict] = None,
 ) -> PropagationResult:
     """
     Propagate an orbit from a TLE and return ground track,
@@ -193,8 +181,6 @@ def propagate_from_tle(
         tle_name: satellite name (optional, for labeling)
         duration_hours: how long to propagate (default 24h)
         step_seconds: time step in seconds (default 60s)
-        ground_station: optional dict with keys:
-            lat_deg, lon_deg, alt_km, min_elevation_deg
 
     Returns:
         PropagationResult with ground track
@@ -205,8 +191,18 @@ def propagate_from_tle(
     # Build time array
     epoch = satellite.epoch
     num_steps = int(duration_hours * 3600 / step_seconds)
+    # endpoint=False keeps the sample spacing exactly step_seconds. With
+    # endpoint=True the last sample lands on the end of the window, which
+    # stretches every interval (60 steps over 1h became 61.02s apart) and
+    # desynchronises the ISO timestamps from the index-derived mission
+    # time t = index * step_seconds used everywhere downstream.
     times = ts.tt_jd(
-        np.linspace(epoch.tt, epoch.tt + duration_hours / 24.0, num_steps)
+        np.linspace(
+            epoch.tt,
+            epoch.tt + duration_hours / 24.0,
+            num_steps,
+            endpoint=False,
+        )
     )
     log.info(
         "Propagating %d steps over %.1fh from epoch %s",
@@ -233,7 +229,6 @@ def propagate_from_tle(
         duration_s=duration_hours * 3600,
         ground_track=ground_track,
         eclipse_periods=eclipse_periods,
-        comms_windows=[],     # populated by comms_windows.py
     )
 
 
@@ -254,7 +249,11 @@ def propagate_from_params(
         inc_deg: inclination in degrees
         duration_hours: propagation duration
         step_seconds: time step
-        epoch: ISO 8601 start time (defaults to now)
+        epoch: ISO 8601 start time. Defaults to the current wall clock,
+            which makes the run NON-reproducible: the solar geometry (and
+            therefore eclipse_periods, and therefore any eclipse-aware
+            fault window) depends on the date the run happened. Pass an
+            explicit epoch for a reproducible pre-launch run.
 
     Returns:
         PropagationResult with ground track
@@ -271,7 +270,15 @@ def propagate_from_params(
     n_rev_day = n_rad_s * 86400 / (2 * math.pi)
 
     # Use current time if no epoch provided
-    t0 = AstropyTime(epoch) if epoch else AstropyTime.now()
+    if epoch:
+        t0 = AstropyTime(epoch)
+    else:
+        t0 = AstropyTime.now()
+        log.warning(
+            "No epoch given for pre-launch orbit — using the current clock. "
+            "Eclipse geometry (and eclipse-aware faults) will differ between "
+            "runs; pass --epoch for a reproducible run."
+        )
 
     # Build epoch string in TLE format: "YYDDD.FFFFFFFF" (exactly 14 chars)
     # %y = 2-digit year, %j = 3-digit day-of-year; fraction = seconds since midnight / 86400

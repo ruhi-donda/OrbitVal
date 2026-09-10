@@ -19,7 +19,6 @@ ground intervention is impossible.
 from dataclasses import dataclass
 from orbitval.faults.base import TelemetryFrame
 from skyfield.api import load, wgs84, EarthSatellite
-from skyfield.positionlib import Geocentric
 import numpy as np
 from orbitval.logging import get_logger
 log = get_logger("comms")
@@ -79,11 +78,15 @@ def compute_comms_windows(
 
     # Build time array
     num_steps = int(duration_hours * 3600 / step_seconds)
+    # endpoint=False — see propagate_from_tle. Window edges here are
+    # reported as start_t/end_t = index * step_seconds and are compared
+    # against telemetry frame times, so the spacing must be exact.
     times = ts.tt_jd(
         np.linspace(
             epoch.tt,
             epoch.tt + duration_hours / 24.0,
-            num_steps
+            num_steps,
+            endpoint=False,
         )
     )
 
@@ -159,7 +162,6 @@ def compute_comms_windows(
 
     # Sort all windows by start time
     all_windows.sort(key=lambda w: w.start_t)
-    return all_windows
 
     log.debug(
         "Found %d comms window(s) across %d station(s)",
@@ -171,6 +173,9 @@ def compute_comms_windows(
             w.ground_station, w.start_time, w.end_time,
             w.duration_s, w.max_elevation_deg
         )
+
+    return all_windows
+
 
 def annotate_blackouts(
     telemetry_stream: list[TelemetryFrame],

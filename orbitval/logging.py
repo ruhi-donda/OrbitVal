@@ -19,9 +19,15 @@ The CLI controls verbosity:
 
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+
+def _utc_now() -> datetime:
+    """Naive UTC 'now'. Replaces datetime.utcnow(), which is deprecated,
+    while keeping the exact same naive-UTC value and string format."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ── Run event buffer (for ORF report embedding) ───────────────
@@ -33,7 +39,7 @@ _log_file_handler: Optional[logging.FileHandler] = None
 def _record_event(level: str, module: str, msg: str) -> None:
     """Record a log event for embedding in the ORF report."""
     _run_events.append({
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": _utc_now().isoformat() + "Z",
         "level": level,
         "module": module,
         "msg": msg,
@@ -49,8 +55,20 @@ def get_run_events() -> list[dict]:
 
 
 def clear_run_events() -> None:
-    """Clear the run event buffer. Called at start of each run."""
+    """Clear the run event buffer."""
     _run_events.clear()
+
+
+def set_run_events(events: list[dict]) -> None:
+    """Replace the run event buffer with `events`.
+
+    Used by the harness to seed a run's audit trail with the events
+    recorded while the orbit was being set up (TLE fetch, propagation,
+    eclipse scan). Those happen before run() is called but are part of
+    the run's provenance, so they belong in the report's run_log.
+    """
+    _run_events.clear()
+    _run_events.extend(events)
 
 
 # ── Custom formatter ──────────────────────────────────────────
@@ -74,8 +92,13 @@ class OrbitValFormatter(logging.Formatter):
         super().__init__()
         self.colorize = colorize
 
+    @staticmethod
+    def format_parts(timestamp: str, levelname: str, name: str, msg: str) -> str:
+        """Format an already-recorded event (used to replay buffered events)."""
+        return f"{timestamp} | {levelname.ljust(8)} | {name.ljust(12)} | {msg}"
+
     def format(self, record: logging.LogRecord) -> str:
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = _utc_now().strftime("%Y-%m-%d %H:%M:%S UTC")
         level = record.levelname.ljust(8)
         module = record.name.ljust(12)
         msg = record.getMessage()
@@ -161,7 +184,7 @@ def set_log_level(level: str) -> None:
         logger.setLevel(numeric)
 
 
-def init_run_log(output_path: Path) -> None:
+def init_run_log(output_path: Path, replay_buffered: bool = True) -> None:
     """
     Initialize a file handler for this run.
     Writes all log events to a .log file alongside the report.
@@ -169,6 +192,10 @@ def init_run_log(output_path: Path) -> None:
     Args:
         output_path: path to the JSON or PDF report —
                      .log file will use the same stem
+        replay_buffered: write the events already in the run buffer (the
+                     orbit setup trail recorded before this run started)
+                     into the new .log file, so the file and the report's
+                     run_log describe the same run.
     """
     global _log_file_handler
 
@@ -190,6 +217,19 @@ def init_run_log(output_path: Path) -> None:
 
     for logger in _loggers.values():
         logger.addHandler(handler)
+
+    # Replay the orbit-setup events recorded before this run started, so
+    # the .log file carries the same provenance as the report's run_log.
+    # These happened before the header, so they are written first.
+    if replay_buffered:
+        for event in _run_events:
+            handler.stream.write(
+                OrbitValFormatter.format_parts(
+                    event["timestamp"].replace("T", " ").replace("Z", " UTC"),
+                    event["level"], event["module"], event["msg"],
+                ) + "\n"
+            )
+        handler.flush()
 
     # Write header
     header_logger = get_logger("orbitval")

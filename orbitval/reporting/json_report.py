@@ -15,8 +15,9 @@ without the hash becoming invalid.
 import json
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from orbitval._version import __version__ as ORBITVAL_VERSION
 from orbitval.faults.base import TelemetryFrame
 from orbitval.engine.injection import InjectionEvent
 from orbitval.config.hardware_3u_schema import HardwareConfig
@@ -26,7 +27,6 @@ log = get_logger("report")
 
 
 ORF_SPEC_VERSION = "1.0"
-ORBITVAL_VERSION = "1.1.0"
 
 # Required top-level fields and expected types, per ARCHITECTURE.md
 # "ORF Spec — Report Format Fields / Required fields".
@@ -91,6 +91,8 @@ def generate_json_report(
     mission_profile: dict | None = None,
     comms_windows: list | None = None,
     eclipse_periods: list | None = None,
+    epoch_source: str = "tle",
+    registry_path: str | Path | None = None,
 ) -> dict:
     """
     Generate an ORF-compliant JSON report.
@@ -108,6 +110,10 @@ def generate_json_report(
         comms_windows: list of CommsWindow objects (or dicts) from the
             orbit engine; empty list when no ground stations were provided
             or when running in pre-launch mode without a real TLE
+        epoch_source: where orbit_epoch came from — "tle" (authoritative),
+            "provided" (explicit --epoch), or "wall_clock" (synthesized at
+            run time, meaning the run is not reproducible)
+        registry_path: optional override for the append-only hash registry
 
     Returns:
         The report dict (also written to output_path)
@@ -123,7 +129,8 @@ def generate_json_report(
         "orf_spec_version": ORF_SPEC_VERSION,
         "schema_version": "1.0",
         "report_id": str(uuid.uuid4()),
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).replace(
+            tzinfo=None).isoformat() + "Z",
 
         # Mission context — self-describing for insurers/launch providers
         "mission_profile": mission_profile or {
@@ -158,6 +165,7 @@ def generate_json_report(
         # Simulation parameters
         "simulation": {
             "orbit_epoch": orbit_epoch,
+            "epoch_source": epoch_source,
             "duration_s": duration_s,
             "seed": seed,
         },
@@ -218,6 +226,7 @@ def generate_json_report(
     entry = append_entry(
         report_hash=integrity_hash,
         satellite_id=satellite_name,
+        registry_path=registry_path,
     )
     log.info(
         "Hash registered in append-only registry (prev: %s...)",

@@ -39,7 +39,9 @@ from orbitval.faults.catalog import FAULT_REGISTRY, get_fault
 from orbitval.engine.injection import run_injection
 from orbitval.reporting.json_report import generate_json_report
 from orbitval.reporting.pdf_report import generate_pdf_report
-from orbitval.logging import get_logger, init_run_log, clear_run_events
+from orbitval.logging import (
+    get_logger, init_run_log, clear_run_events, get_run_events, set_run_events
+)
 
 log = get_logger("runner")
 
@@ -117,6 +119,7 @@ def _evaluate_scenario(
     seed: int,
     expected_safe_responses: list[str],
     fault: object | None = None,
+    step_seconds: float = 60.0,
 ) -> ScenarioResult:
     """
     Evaluate pass/fail for a scenario based on autonomy responses.
@@ -132,6 +135,8 @@ def _evaluate_scenario(
             (e.g. real eclipse windows) so the evaluation window
             matches the injection window. Falls back to a
             default-constructed instance when omitted.
+        step_seconds: telemetry step of this run, used to convert the
+            count of fault-active frames into a real duration.
     """
     scenario = fault if fault is not None else get_fault(scenario_name)
 
@@ -164,7 +169,7 @@ def _evaluate_scenario(
             name=scenario_name,
             version=scenario.version,
             result="PASS",
-            duration_s=len(active_responses) * 60.0,
+            duration_s=len(active_responses) * step_seconds,
             seed=seed,
             autonomy_responses=responses,
             primary_response=primary,
@@ -175,7 +180,7 @@ def _evaluate_scenario(
             name=scenario_name,
             version=scenario.version,
             result="FAIL",
-            duration_s=len(active_responses) * 60.0,
+            duration_s=len(active_responses) * step_seconds,
             seed=seed,
             autonomy_responses=responses,
             primary_response=primary,
@@ -222,6 +227,10 @@ class TestRunner:
         )
     """
 
+    # Not a pytest test class despite the name — suppresses
+    # PytestCollectionWarning when the suite imports it.
+    __test__ = False
+
     def __init__(
         self,
         config: str | Path,
@@ -235,6 +244,7 @@ class TestRunner:
         step_seconds: float = 60.0,
         seed: int = 42,
         ground_stations: list[GroundStation] | None = None,
+        epoch: str | None = None,
     ):
         """
         Args:
@@ -249,6 +259,11 @@ class TestRunner:
             step_seconds: telemetry time step
             seed: random seed for reproducibility
             ground_stations: optional list of GroundStation objects
+            epoch: ISO 8601 start time for pre-launch mode. Without it the
+                synthesized orbit starts at the current wall clock, so the
+                solar geometry — and every eclipse-aware fault window —
+                changes between runs even at a fixed seed. Ignored in TLE
+                modes, where the TLE's own epoch is authoritative.
         """
         self.hardware = load_hardware_config(config)
         self.autonomy = autonomy
@@ -256,6 +271,12 @@ class TestRunner:
         self.step_seconds = step_seconds
         self.seed = seed
         self.ground_stations = ground_stations or []
+        self.epoch = epoch
+
+        # Start this runner's audit trail here: orbit acquisition and
+        # propagation are part of a run's provenance and must reach the
+        # report's run_log (see _setup_events below).
+        clear_run_events()
 
         # ── Orbit input: three modes ──────────────────────────
         if orbit_alt_km is not None and orbit_inc_deg is not None:
@@ -268,16 +289,19 @@ class TestRunner:
                 orbit_alt_km, orbit_inc_deg
             )
             self.tle = None
+            self.epoch_source = "provided" if epoch else "wall_clock"
             self.orbit = propagate_from_params(
                 alt_km=orbit_alt_km,
                 inc_deg=orbit_inc_deg,
                 duration_hours=duration_hours,
                 step_seconds=step_seconds,
+                epoch=epoch,
             )
 
         elif tle_line1 and tle_line2:
             # Mode 2: manual TLE strings — offline/air-gapped
             log.info("Using provided TLE strings for '%s'", tle_name)
+            self.epoch_source = "tle"
             self.tle = tle_from_strings(tle_name, tle_line1, tle_line2)
             log.info("Propagating orbit...")
             self.orbit = propagate_from_tle(
@@ -291,6 +315,7 @@ class TestRunner:
         else:
             # Mode 1: fetch live TLE from Celestrak (default)
             log.info("Fetching TLE for '%s'", tle_name)
+            self.epoch_source = "tle"
             self.tle = fetch_tle(tle_name)
             log.info("Propagating orbit...")
             self.orbit = propagate_from_tle(
@@ -325,6 +350,12 @@ class TestRunner:
         else:
             self.comms_windows = []
 
+        # Snapshot of the orbit-setup audit trail. Each run() seeds its
+        # buffer with this, so every report records where its orbit came
+        # from (cache hit / live fetch / stale fallback / synthesized)
+        # without a later run inheriting an earlier run's scenario events.
+        self._setup_events = get_run_events()
+
     def _build_telemetry(self) -> list[TelemetryFrame]:
         """Build base telemetry stream from propagated orbit."""
         stream = []
@@ -352,6 +383,7 @@ class TestRunner:
         output_dir: str | Path = "reports/",
         expected_safe_responses: list[str] | None = None,
         mission_profile: dict | None = None,
+        registry_path: str | Path | None = None,
     ) -> dict:
         """
         Run fault scenarios against user autonomy code.
@@ -362,6 +394,8 @@ class TestRunner:
             output_dir: where to write JSON + PDF + log reports
             expected_safe_responses: responses that count as PASS
             mission_profile: optional mission context for ORF report
+            registry_path: optional override for the append-only hash
+                registry this report is registered in
 
         Returns:
             ORF report dict
@@ -377,11 +411,12 @@ class TestRunner:
 
         # Start the run's audit trail BEFORE scenarios execute, so the
         # events they log end up in both the .log file and the report's
-        # embedded run_log. Clearing here (not at report time) is what
-        # keeps each run's trail scoped to that run.
-        from datetime import datetime
-        clear_run_events()
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+        # embedded run_log. Seeding with the setup events (rather than
+        # clearing outright) keeps orbit provenance in the trail while
+        # still scoping scenario events to this run.
+        from datetime import datetime, timezone
+        set_run_events(self._setup_events)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
         sat_name = self.hardware.name.replace(" ", "_").lower()
         report_stem = f"{sat_name}_{timestamp}"
 
@@ -414,7 +449,10 @@ class TestRunner:
                     (p["start_t"], p["end_t"])
                     for p in self.orbit.eclipse_periods
                 ]
-            scenario_kw = kwargs.get(scenario_name, default_kw)
+            # Merge, don't replace: caller overrides win per key, but the
+            # harness-supplied seed and real eclipse windows survive a
+            # partial override like {"t_start": 120}.
+            scenario_kw = {**default_kw, **kwargs.get(scenario_name, {})}
             fault = get_fault(scenario_name, **scenario_kw)
 
             # Inject faults
@@ -455,6 +493,7 @@ class TestRunner:
                 seed=self.seed,
                 expected_safe_responses=safe,
                 fault=fault,
+                step_seconds=self.step_seconds,
             )
             scenario_results.append(result)
 
@@ -508,6 +547,8 @@ class TestRunner:
             seed=self.seed,
             output_path=Path(output_dir) / f"{report_stem}.json",
             mission_profile=mission_profile,
+            epoch_source=self.epoch_source,
+            registry_path=registry_path,
         )
 
         generate_pdf_report(

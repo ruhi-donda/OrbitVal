@@ -196,7 +196,7 @@ orbitval run --config satellite.yaml \
 
 OrbitVal supports three ways to provide orbital context:
 
-**Mode 1 — Live TLE** (default): fetches from [Celestrak](https://celestrak.org) and caches locally for 24 hours.
+**Mode 1 — Live TLE** (default): fetches from [Celestrak](https://celestrak.org) and caches locally for 6 hours. If the network is unreachable, a stale cache is used as a fallback.
 
 ```bash
 orbitval run --tle-name "LEMUR-2-JOSHUATREE"
@@ -213,8 +213,10 @@ orbitval run \
 **Mode 3 — Pre-launch** (no TLE yet): OrbitVal synthesizes a circular orbit from your planned mission parameters.
 
 ```bash
-orbitval run --orbit-alt 550 --orbit-inc 53.0
+orbitval run --orbit-alt 550 --orbit-inc 53.0 --epoch 2026-09-08T00:00:00Z
 ```
+
+Pass `--epoch` for a reproducible pre-launch run. Without it the orbit starts at the current clock, so the solar geometry — and therefore the eclipse periods and any eclipse-aware fault window — differs between runs even at a fixed `--seed`. The report records which case applied in `simulation.epoch_source`.
 
 ---
 
@@ -329,11 +331,16 @@ orbitval run
   --tle-line2 <string>      TLE line 2 for offline mode (Mode 2, use with --tle-line1)
   --orbit-alt <km>          orbital altitude for pre-launch mode (Mode 3)
   --orbit-inc <deg>         orbital inclination for pre-launch mode (Mode 3)
+  --epoch <iso8601>         start time for pre-launch mode; required for a
+                            reproducible Mode 3 run
   --duration <hours>        simulation duration (default: 1.0)
   --step <seconds>          telemetry time step (default: 60.0)
   --seed <int>              random seed for reproducibility (default: 42)
   --ground-station <spec>   name,lat,lon[,alt,min_el]
   --output <dir>            report output directory (default: reports/)
+  --registry <path>         append-only hash registry to register this
+                            report in (default: $ORBITVAL_REGISTRY or
+                            .orbitval/registry.jsonl)
   --verbose                 show debug logs
   --quiet                   show warnings and errors only
 ```
@@ -372,6 +379,8 @@ TLE data from [Celestrak](https://celestrak.org) with local caching and offline 
 - **Thermal model is simplified** — the `eclipse_power_stress` scenario models a flat bus-temperature drop in shadow, not a full thermal simulation with component-level gradients.
 - **PDF audit trail** — the PDF report is a human-readable mission readiness summary. The full internal run log (every injected fault event, timestamped) is in the JSON report only.
 - **Hash registry is local-only** — the append-only registry detects tampering with individual entries and reports, but cannot detect deletion or wholesale replacement of the registry file itself. A hosted/remote registry with a witnessed chain head (see ARCHITECTURE.md) is required to close that gap and is planned, not yet built.
+- **Do not run concurrent OrbitVal instances against one registry** — `append_entry` reads the last entry and appends without locking, so two runs writing to the same registry file at the same time can chain to the same predecessor and break the chain. Give parallel runs separate registries with `--registry`.
+- **Autonomy pass criteria are coarse** — a scenario passes if the autonomy code returned any safe response at any point while the fault was active. There is no time-to-detect bound and no check that it recovered after the fault cleared.
 
 ---
 

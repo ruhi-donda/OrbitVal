@@ -181,3 +181,94 @@ class TestLoadFromFile:
         config_path = Path(__file__).parent.parent / "satellite.yaml"
         hw = load_hardware_config(config_path)
         assert isinstance(hw, HardwareConfig)
+
+
+class TestMalformedYamlStructure:
+    """Q11: structurally wrong YAML used to raise AttributeError/TypeError
+    out of _validate instead of a readable HardwareConfigError."""
+
+    def test_empty_file_raises_config_error(self, tmp_path):
+        path = tmp_path / "empty.yaml"
+        path.write_text("")
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "empty" in str(exc.value).lower()
+
+    def test_top_level_list_raises_config_error(self, tmp_path):
+        path = tmp_path / "list.yaml"
+        path.write_text("- one\n- two\n")
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "mapping" in str(exc.value)
+
+    def test_top_level_scalar_raises_config_error(self, tmp_path):
+        path = tmp_path / "scalar.yaml"
+        path.write_text("just a string\n")
+        with pytest.raises(HardwareConfigError):
+            load_hardware_config(path)
+
+    def test_unparseable_yaml_raises_config_error(self, tmp_path):
+        path = tmp_path / "broken.yaml"
+        path.write_text("name: [unclosed\n")
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "YAML" in str(exc.value)
+
+    def test_sensor_entry_that_is_not_a_mapping(self, tmp_path):
+        path = tmp_path / "sensors.yaml"
+        path.write_text(
+            'schema_version: "1.0"\n'
+            'name: X\n'
+            'form_factor: "3U"\n'
+            'mass_kg: 4.0\n'
+            'sensors:\n'
+            '  - GPS\n'
+            'actuators:\n'
+            '  - type: reaction_wheel\n'
+            '    max_torque_nm: 0.001\n'
+            'power:\n'
+            '  battery_capacity_wh: 20.0\n'
+            '  solar_panel_area_m2: 0.06\n'
+        )
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "sensors[0]" in str(exc.value)
+
+    def test_actuator_entry_that_is_not_a_mapping(self, tmp_path):
+        path = tmp_path / "actuators.yaml"
+        path.write_text(
+            'schema_version: "1.0"\n'
+            'name: X\n'
+            'form_factor: "3U"\n'
+            'mass_kg: 4.0\n'
+            'sensors:\n'
+            '  - type: GPS\n'
+            '    noise_sigma: 0.01\n'
+            'actuators:\n'
+            '  - reaction_wheel\n'
+            'power:\n'
+            '  battery_capacity_wh: 20.0\n'
+            '  solar_panel_area_m2: 0.06\n'
+        )
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "actuators[0]" in str(exc.value)
+
+    def test_power_that_is_not_a_mapping(self, tmp_path):
+        path = tmp_path / "power.yaml"
+        path.write_text(
+            'schema_version: "1.0"\n'
+            'name: X\n'
+            'form_factor: "3U"\n'
+            'mass_kg: 4.0\n'
+            'sensors:\n'
+            '  - type: GPS\n'
+            '    noise_sigma: 0.01\n'
+            'actuators:\n'
+            '  - type: reaction_wheel\n'
+            '    max_torque_nm: 0.001\n'
+            'power: 20\n'
+        )
+        with pytest.raises(HardwareConfigError) as exc:
+            load_hardware_config(path)
+        assert "power" in str(exc.value)

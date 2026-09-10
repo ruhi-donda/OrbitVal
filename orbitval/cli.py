@@ -15,6 +15,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from orbitval._version import __version__
+
 
 def cmd_list_faults(args):
     """List all available fault scenarios."""
@@ -78,13 +80,29 @@ def cmd_run(args):
                     f"Use: name,lat,lon or name,lat,lon,alt,min_el"
                 )
                 sys.exit(1)
-            ground_stations.append(GroundStation(
-                name=parts[0],
-                lat_deg=float(parts[1]),
-                lon_deg=float(parts[2]),
-                alt_km=float(parts[3]) if len(parts) > 3 else 0.0,
-                min_elevation_deg=float(parts[4]) if len(parts) > 4 else 10.0,
-            ))
+            try:
+                station = GroundStation(
+                    name=parts[0],
+                    lat_deg=float(parts[1]),
+                    lon_deg=float(parts[2]),
+                    alt_km=float(parts[3]) if len(parts) > 3 else 0.0,
+                    min_elevation_deg=float(parts[4]) if len(parts) > 4 else 10.0,
+                )
+            except ValueError:
+                print(
+                    f"✗ Invalid ground station '{gs}': lat, lon, alt and "
+                    f"min_el must be numbers."
+                )
+                sys.exit(1)
+            if not -90.0 <= station.lat_deg <= 90.0:
+                print(f"✗ Invalid ground station '{gs}': latitude must be "
+                      f"between -90 and 90.")
+                sys.exit(1)
+            if not -180.0 <= station.lon_deg <= 180.0:
+                print(f"✗ Invalid ground station '{gs}': longitude must be "
+                      f"between -180 and 180.")
+                sys.exit(1)
+            ground_stations.append(station)
 
     # Default autonomy stub
     class DefaultAutonomy:
@@ -137,6 +155,25 @@ def cmd_run(args):
         print("✗ --tle-line1 and --tle-line2 must be used together.")
         sys.exit(1)
 
+    # --epoch only applies to pre-launch mode; in TLE modes the TLE's own
+    # epoch is authoritative and silently ignoring the flag would be worse
+    # than saying so.
+    epoch = getattr(args, "epoch", None)
+    prelaunch = args.orbit_alt is not None and args.orbit_inc is not None
+    if epoch and not prelaunch:
+        print("✗ --epoch applies to pre-launch mode only "
+              "(use it with --orbit-alt and --orbit-inc); "
+              "in TLE modes the TLE epoch is authoritative.")
+        sys.exit(1)
+    if epoch:
+        from datetime import datetime
+        try:
+            datetime.fromisoformat(epoch.replace("Z", "+00:00"))
+        except ValueError:
+            print(f"✗ Invalid --epoch '{epoch}'. "
+                  f"Use ISO 8601, e.g. 2026-09-08T00:00:00Z")
+            sys.exit(1)
+
     # Build runner
     from orbitval.config.hardware_3u_schema import HardwareConfigError
     try:
@@ -152,12 +189,16 @@ def cmd_run(args):
             step_seconds=args.step,
             seed=args.seed,
             ground_stations=ground_stations,
+            epoch=epoch,
         )
     except FileNotFoundError:
         print(f"\n✗ Config file not found: {args.config}")
         sys.exit(1)
     except HardwareConfigError as e:
         print(f"\n✗ Config invalid:\n{e}")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"\n✗ Invalid orbit input:\n  {e}")
         sys.exit(1)
     except ConnectionError as e:
         print(f"\n✗ TLE fetch failed:\n  {e}")
@@ -186,6 +227,7 @@ def cmd_run(args):
         report = runner.run(
             scenarios=scenarios,
             output_dir=args.output,
+            registry_path=getattr(args, "registry", None),
             mission_profile={
                 "orbit_type": args.orbit_type,
                 "altitude_band_km": altitude_band_km,
@@ -316,7 +358,8 @@ def main():
         description="OrbitVal — CubeSat autonomy stress testing framework",
     )
     parser.add_argument(
-        "--version", action="version", version="OrbitVal 1.1.0"
+        "--version", action="version",
+        version=f"OrbitVal {__version__}"
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -412,6 +455,19 @@ def main():
     run_parser.add_argument(
         "--orbit-type", default="LEO", dest="orbit_type",
         help="Orbit type for report (default: LEO)"
+    )
+    run_parser.add_argument(
+        "--epoch", default=None,
+        help="ISO 8601 start time for pre-launch mode "
+             "(e.g. 2026-09-08T00:00:00Z). Required for a reproducible "
+             "pre-launch run — without it the orbit starts at the current "
+             "clock and eclipse geometry changes between runs."
+    )
+    run_parser.add_argument(
+        "--registry", default=None,
+        help="Path to the append-only hash registry this report is "
+             "registered in (default: $ORBITVAL_REGISTRY or "
+             ".orbitval/registry.jsonl)"
     )
     run_parser.set_defaults(func=cmd_run)
 

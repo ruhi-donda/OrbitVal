@@ -11,11 +11,12 @@ Fallback: Space-Track.org or direct TLE string input.
 
 from dataclasses import dataclass
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import urllib.request
 import urllib.parse
 import urllib.error
+from orbitval._version import __version__
 from orbitval.logging import get_logger
 log = get_logger("tle")
 
@@ -47,7 +48,8 @@ def _is_cache_fresh(cache_file: Path) -> bool:
     try:
         data = json.loads(cache_file.read_text())
         fetched = datetime.fromisoformat(data["fetched_at"])
-        return datetime.utcnow() - fetched < timedelta(hours=CACHE_EXPIRY_HOURS)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        return now - fetched < timedelta(hours=CACHE_EXPIRY_HOURS)
     except Exception:
         return False
 
@@ -106,7 +108,7 @@ def fetch_tle(satellite_name: str) -> TLERecord:
 
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "OrbitVal/1.1.0"}
+            headers={"User-Agent": f"OrbitVal/{__version__}"}
         )
         with urllib.request.urlopen(req, timeout=30) as response:
             raw = response.read().decode("utf-8").strip()
@@ -128,7 +130,8 @@ def fetch_tle(satellite_name: str) -> TLERecord:
             name=lines[0],
             line1=lines[1],
             line2=lines[2],
-            fetched_at=datetime.utcnow().isoformat(),
+            fetched_at=datetime.now(timezone.utc).replace(
+                tzinfo=None).isoformat(),
         )
         _write_cache(cache_file, record)
         return record
@@ -164,5 +167,5 @@ def tle_from_strings(name: str, line1: str, line2: str) -> TLERecord:
         name=name,
         line1=line1,
         line2=line2,
-        fetched_at=datetime.utcnow().isoformat(),
+        fetched_at=datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
     )

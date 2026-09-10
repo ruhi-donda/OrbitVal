@@ -83,13 +83,28 @@ def load_hardware_config(config_path: str | Path) -> HardwareConfig:
         )
 
     with open(path) as f:
-        raw = yaml.safe_load(f)
+        try:
+            raw = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise HardwareConfigError(
+                f"Invalid hardware config at {path}: not valid YAML.\n  {e}"
+            ) from e
 
     return _validate(raw, path)
 
 
 def _validate(raw: dict, path: Path) -> HardwareConfig:
     """Validate raw YAML dict against the hardware schema."""
+    # An empty file parses to None, and a YAML list/scalar parses to a
+    # non-dict; both used to raise AttributeError instead of a readable
+    # config error.
+    if not isinstance(raw, dict):
+        got = "an empty file" if raw is None else f"a {type(raw).__name__}"
+        raise HardwareConfigError(
+            f"Invalid hardware config at {path}: expected a YAML mapping "
+            f"of config keys, got {got}."
+        )
+
     errors = []
 
     # schema_version
@@ -116,8 +131,17 @@ def _validate(raw: dict, path: Path) -> HardwareConfig:
     sensors_raw = raw.get("sensors", [])
     if not sensors_raw:
         errors.append("At least one sensor must be defined.")
+    if sensors_raw and not isinstance(sensors_raw, list):
+        errors.append("sensors must be a list of {type, noise_sigma} entries.")
+        sensors_raw = []
     sensors = []
     for i, s in enumerate(sensors_raw):
+        if not isinstance(s, dict):
+            errors.append(
+                f"sensors[{i}] must be a mapping with 'type' and "
+                f"'noise_sigma' keys, got {type(s).__name__}."
+            )
+            continue
         stype = s.get("type")
         noise = s.get("noise_sigma")
         if stype not in SUPPORTED_SENSOR_TYPES:
@@ -136,8 +160,19 @@ def _validate(raw: dict, path: Path) -> HardwareConfig:
     actuators_raw = raw.get("actuators", [])
     if not actuators_raw:
         errors.append("At least one actuator must be defined.")
+    if actuators_raw and not isinstance(actuators_raw, list):
+        errors.append(
+            "actuators must be a list of {type, max_torque_nm} entries."
+        )
+        actuators_raw = []
     actuators = []
     for i, a in enumerate(actuators_raw):
+        if not isinstance(a, dict):
+            errors.append(
+                f"actuators[{i}] must be a mapping with 'type' and "
+                f"'max_torque_nm' keys, got {type(a).__name__}."
+            )
+            continue
         atype = a.get("type")
         torque = a.get("max_torque_nm")
         if atype not in SUPPORTED_ACTUATOR_TYPES:
@@ -154,6 +189,12 @@ def _validate(raw: dict, path: Path) -> HardwareConfig:
 
     # power
     power_raw = raw.get("power", {})
+    if not isinstance(power_raw, dict):
+        errors.append(
+            "power must be a mapping with battery_capacity_wh and "
+            "solar_panel_area_m2."
+        )
+        power_raw = {}
     batt = power_raw.get("battery_capacity_wh")
     solar = power_raw.get("solar_panel_area_m2")
     if not isinstance(batt, (int, float)) or batt <= 0:
