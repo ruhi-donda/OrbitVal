@@ -91,8 +91,19 @@ def test_loader_errors(dataset, tmp_path):
 
     nomatch = tmp_path / "nomatch"
     _write_dataset(nomatch, [("C-1", "SMAP", [[5, 6]], 7, 2)], np.random.default_rng(1))
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="no label row"):
         load_spacecraft(nomatch, "SMAP")
+
+
+def test_disagreeing_duplicate_rows_skip_channel(tmp_path):
+    # Like the real P-2: same length, different windows -> left out
+    _write_dataset(tmp_path, [
+        ("P-2", "SMAP", [[500, 600]], T_TEST, 2),
+        ("P-2", "SMAP", [[550, 650]], T_TEST, 2),
+        ("P-3", "SMAP", [[500, 600]], T_TEST, 2),
+        ("P-3", "SMAP", [[500, 600]], T_TEST, 2),   # identical duplicate: fine
+    ], np.random.default_rng(2))
+    assert [c.chan_id for c in load_spacecraft(tmp_path, "SMAP")] == ["P-3"]
 
 
 def test_split_channels_deterministic_and_disjoint(dataset):
