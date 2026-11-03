@@ -24,6 +24,12 @@ from orbitval.ml.threshold import Calibration, calibrate_threshold
 # detector keeps the comparison fair — all are scored on the same steps.
 EVAL_WARMUP = 320
 
+# Steps after an event during which a new alarm is blamed on the event
+# (the recovery spike when a fault ends), not counted as false. 10 steps
+# covers the EWMA smoothing (span 10). Same value for SMAP/MSL and
+# OrbitVal missions.
+EVENT_GRACE = 10
+
 
 @dataclass
 class EvaluationResult:
@@ -72,7 +78,7 @@ def evaluate(
     test_scores = score_test(detector, eval_channels, warmup)
     counts, pooled_s, pooled_y = [], [], []
     for c, s in zip(eval_channels, test_scores):
-        counts.append(count_channel(s, calibration.threshold, c.test_events))
+        counts.append(count_channel(s, calibration.threshold, c.test_events, EVENT_GRACE))
         valid = np.isfinite(s)
         pooled_s.append(s[valid])
         pooled_y.append(c.test_labels()[valid])

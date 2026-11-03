@@ -7,7 +7,8 @@ EVENT view (what an operator cares about) — the headline numbers:
 - event recall: fraction of labeled anomaly events with at least one
   alarm inside [start, end]
 - false alarms per 10k steps: alarm *runs* (consecutive alarm steps
-  count once) that touch no labeled event, per 10,000 normal steps
+  count once) that touch no labeled event (or its short grace period,
+  see count_channel), per 10,000 normal steps
 - detection delay: steps from event start to its first alarm, over the
   detected events; we report the median
 
@@ -66,12 +67,27 @@ def count_channel(
     scores: np.ndarray,
     threshold: float,
     events: list[tuple[int, int]],
+    grace: int = 0,
 ) -> ChannelCounts:
-    """Apply `score > threshold` to one series and count everything."""
+    """
+    Apply `score > threshold` to one series and count everything.
+
+    grace: steps after each event's end in which a new alarm run is
+    blamed on the event, not counted as a false alarm. When a fault
+    ends, the signal snaps back and a forecaster sees one more big
+    error; that alarm is caused by the fault. It is also NOT a
+    detection, which must happen inside [start, end]. Grace steps are
+    left out of the normal-step count too. Point-wise metrics use the
+    plain labels.
+    """
     scores = np.asarray(scores, dtype=np.float64)
     valid = np.isfinite(scores)
     alarms = valid & (np.where(valid, scores, -np.inf) > threshold)
     labels = events_to_labels(events, len(scores))
+    blamed = events_to_labels(                     # event + grace steps
+        [(start, min(end + grace, len(scores) - 1)) for start, end in events],
+        len(scores),
+    )
 
     c = ChannelCounts()
     for start, end in events:
@@ -85,9 +101,9 @@ def count_channel(
             c.delays.append(int(hits[0]))      # steps after event start
 
     c.n_false_alarms = sum(
-        1 for a, b in runs(alarms) if not labels[a:b + 1].any()
+        1 for a, b in runs(alarms) if not blamed[a:b + 1].any()
     )
-    c.n_normal_steps = int((valid & ~labels).sum())
+    c.n_normal_steps = int((valid & ~blamed).sum())
     c.tp = int((alarms & labels).sum())
     c.fp = int((alarms & ~labels).sum())
     c.fn = int((valid & labels & ~alarms).sum())
