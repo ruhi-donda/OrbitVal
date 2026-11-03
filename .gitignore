@@ -19,3 +19,7 @@ docs-template/AUDIT.md
 docs-template/CURSOR_CONTEXT.md
 docs-template/DEBUG.md
 docs-template/README.md
+
+# Detector-validation mode: downloaded datasets and generated results
+data/
+results/

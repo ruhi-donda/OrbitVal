@@ -24,6 +24,13 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
+# Detector-validation mode (orbitval/ml). Kept out of the core install:
+# OrbitVal itself never imports torch or streamlit.
+ml = [
+    "torch>=2.2",
+    "streamlit>=1.35",
+    "matplotlib>=3.7",
+]
 
 [project.scripts]
 orbitval = "orbitval.cli:main"
