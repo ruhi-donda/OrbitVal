@@ -53,7 +53,8 @@ def main(argv: list[str] | None = None) -> dict:
         print(f"  event recall        {m.n_detected}/{m.n_events} = {_fmt(m.event_recall, '.3f')}"
               f"   ({m.n_unscoreable} unscoreable)")
         print(f"  false alarms/10k    {_fmt(m.false_alarms_per_10k, '.2f')}"
-              f"   ({m.n_false_alarms} over {m.n_normal_steps} normal steps)")
+              f"   ({m.n_false_alarms} over {m.n_normal_steps} normal steps; "
+              f"{_fmt(m.false_alarms_per_10k_short_grace, '.2f')} with the short grace)")
         print(f"  median delay        {_fmt(m.median_delay, '.0f')} steps")
         print(f"  point P / R / F1    {_fmt(m.point_precision, '.3f')} / "
               f"{_fmt(m.point_recall, '.3f')} / {_fmt(m.point_f1, '.3f')}")

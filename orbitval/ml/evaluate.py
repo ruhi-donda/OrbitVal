@@ -25,10 +25,16 @@ from orbitval.ml.threshold import Calibration, calibrate_threshold
 EVAL_WARMUP = 320
 
 # Steps after an event during which a new alarm is blamed on the event
-# (the recovery spike when a fault ends), not counted as false. 10 steps
-# covers the EWMA smoothing (span 10). Same value for SMAP/MSL and
-# OrbitVal missions.
-EVENT_GRACE = 10
+# (the recovery after a fault ends), not counted as false. A neural model
+# still has faulty data in its input for 64 steps, and the EWMA (span 10)
+# lags after that, so 74 covers both. The same value is used for every
+# detector and dataset.
+EVENT_GRACE = 74
+
+# Reported alongside EVENT_GRACE. The original value, sized for the
+# smoothing alone. Comparing the two shows how many alarms the longer
+# grace period reclassifies.
+SHORT_GRACE = 10
 
 
 @dataclass
@@ -76,14 +82,15 @@ def evaluate(
     calibration = calibrate_threshold(score_val(detector, calib_channels), budget_per_10k)
 
     test_scores = score_test(detector, eval_channels, warmup)
-    counts, pooled_s, pooled_y = [], [], []
+    counts, counts_short, pooled_s, pooled_y = [], [], [], []
     for c, s in zip(eval_channels, test_scores):
         counts.append(count_channel(s, calibration.threshold, c.test_events, EVENT_GRACE))
+        counts_short.append(count_channel(s, calibration.threshold, c.test_events, SHORT_GRACE))
         valid = np.isfinite(s)
         pooled_s.append(s[valid])
         pooled_y.append(c.test_labels()[valid])
 
-    metrics = summarize(counts, np.concatenate(pooled_s), np.concatenate(pooled_y))
+    metrics = summarize(counts, np.concatenate(pooled_s), np.concatenate(pooled_y), counts_short)
     return EvaluationResult(
         detector=getattr(detector, "name", type(detector).__name__),
         calibration=calibration,

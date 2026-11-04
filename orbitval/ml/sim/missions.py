@@ -29,7 +29,7 @@ import numpy as np
 
 from orbitval.config.hardware_3u_schema import HardwareConfig
 from orbitval.engine.injection import run_injection
-from orbitval.ml.evaluate import EVAL_WARMUP, EVENT_GRACE
+from orbitval.ml.evaluate import EVAL_WARMUP, EVENT_GRACE, SHORT_GRACE
 from orbitval.ml.metrics import DetectionMetrics, count_channel, runs, summarize
 from orbitval.ml.sim.faults import FAULTS, build_fault
 from orbitval.ml.sim.telemetry import CHANNELS, frames_to_array, generate_telemetry
@@ -104,8 +104,12 @@ def make_mission(
     seed: int,
     fault: str | None = None,
     severity: float = 0.0,
+    onset: int | None = None,
 ) -> Mission:
-    """One mission, clean (fault=None) or with one fault event."""
+    """
+    One mission, clean (fault=None) or with one fault event. The onset
+    step is drawn from the seed unless given (the demo lets you pick it).
+    """
     rng = np.random.default_rng(seed)
     orbits = orbits_for_seed(seed)
     orbit = orbits[rng.integers(len(orbits))]
@@ -119,9 +123,12 @@ def make_mission(
         # The onset is drawn the same way for every fault, so a rep
         # shares its onset across faults. Only eclipse_power_stress needs
         # a sunlit window: an eclipse during an eclipse isn't a fault.
-        onset_rng = np.random.default_rng([seed, 1])
-        sunlit_only = fault == "eclipse_power_stress"
-        onset = _pick_onset(onset_rng, sim.illumination, sunlit_only)
+        if onset is None:
+            onset_rng = np.random.default_rng([seed, 1])
+            sunlit_only = fault == "eclipse_power_stress"
+            onset = _pick_onset(onset_rng, sim.illumination, sunlit_only)
+        elif not 0 <= onset <= len(frames) - FAULT_STEPS:
+            raise ValueError(f"onset must be in [0, {len(frames) - FAULT_STEPS}]")
         f = build_fault(fault, severity,
                         t_start=onset * STEP_S,
                         # is_active is inclusive at both ends, so N steps
@@ -180,14 +187,15 @@ def calibrate_on_missions(detector, missions: list[Mission], budget_per_10k: flo
 
 def evaluate_cell(detector, missions: list[Mission], threshold: float) -> DetectionMetrics:
     """Metrics for one (fault, severity) cell of the map."""
-    counts, pooled_s, pooled_y = [], [], []
+    counts, counts_short, pooled_s, pooled_y = [], [], [], []
     for m in missions:
         s = mission_scores(detector, m.data)
         counts.append(count_channel(s, threshold, m.events, EVENT_GRACE))
+        counts_short.append(count_channel(s, threshold, m.events, SHORT_GRACE))
         valid = np.isfinite(s)
         pooled_s.append(s[valid])
         pooled_y.append(m.labels[valid])
-    return summarize(counts, np.concatenate(pooled_s), np.concatenate(pooled_y))
+    return summarize(counts, np.concatenate(pooled_s), np.concatenate(pooled_y), counts_short)
 
 
 def detectability_map(

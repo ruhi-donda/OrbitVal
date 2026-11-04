@@ -18,6 +18,7 @@ from pathlib import Path
 
 from orbitval.config.hardware_3u_schema import load_hardware_config
 from orbitval.logging import set_log_level
+from orbitval.ml.evaluate import EVENT_GRACE, SHORT_GRACE
 from orbitval.ml.models.baseline import PersistenceBaseline
 from orbitval.ml.sim.missions import SEVERITIES, detectability_map
 
@@ -56,8 +57,10 @@ def main(argv: list[str] | None = None) -> dict:
             f"{_fmt(c.metrics.event_recall, '.2f'):>6} ({_fmt(c.metrics.median_delay, '.0f'):>3})"
             for c in row))
     fa = [c.metrics.false_alarms_per_10k for c in cells]
-    print(f"\nfalse alarms/10k on faulted missions (outside events): "
-          f"mean {sum(fa) / len(fa):.2f}, max {max(fa):.2f}")
+    fa_short = [c.metrics.false_alarms_per_10k_short_grace for c in cells]
+    print(f"\nfalse alarms/10k on faulted missions, grace {EVENT_GRACE}: "
+          f"mean {sum(fa) / len(fa):.2f}, max {max(fa):.2f}; "
+          f"grace {SHORT_GRACE}: mean {sum(fa_short) / len(fa_short):.2f}, max {max(fa_short):.2f}")
 
     result = {
         "detector": detector.name,

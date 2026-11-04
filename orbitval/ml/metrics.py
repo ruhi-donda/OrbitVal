@@ -157,6 +157,10 @@ class DetectionMetrics:
     point_recall: float
     point_f1: float
     pr_auc: float
+    # The same false-alarm count under a shorter grace period, for comparison
+    n_false_alarms_short_grace: int | None = None
+    n_normal_steps_short_grace: int | None = None
+    false_alarms_per_10k_short_grace: float = float("nan")
 
 
 def _safe_div(a: float, b: float) -> float:
@@ -167,6 +171,7 @@ def summarize(
     counts: list[ChannelCounts],
     pooled_scores: np.ndarray,
     pooled_labels: np.ndarray,
+    counts_short_grace: list[ChannelCounts] | None = None,
 ) -> DetectionMetrics:
     """
     Pool per-channel counts into one set of metrics. Pooling (summing
@@ -175,6 +180,8 @@ def summarize(
 
     pooled_scores / pooled_labels: all scored steps of all channels,
     concatenated (NaN steps already removed), for PR-AUC.
+    counts_short_grace: optional counts for the same alarms under a shorter
+    grace period. Grace only affects false alarms, so that's all it adds.
     """
     n_events = sum(c.n_events for c in counts)
     n_detected = sum(c.n_detected for c in counts)
@@ -188,6 +195,12 @@ def summarize(
     precision = _safe_div(tp, tp + fp)
     recall = _safe_div(tp, tp + fn)
     f1 = _safe_div(2 * tp, 2 * tp + fp + fn)
+
+    short_fa, short_normal, short_rate = None, None, float("nan")
+    if counts_short_grace is not None:
+        short_fa = sum(c.n_false_alarms for c in counts_short_grace)
+        short_normal = sum(c.n_normal_steps for c in counts_short_grace)
+        short_rate = _safe_div(short_fa * 10_000, short_normal)
 
     return DetectionMetrics(
         n_channels=len(counts),
@@ -203,4 +216,7 @@ def summarize(
         point_recall=recall,
         point_f1=f1,
         pr_auc=average_precision(pooled_scores, pooled_labels),
+        n_false_alarms_short_grace=short_fa,
+        n_normal_steps_short_grace=short_normal,
+        false_alarms_per_10k_short_grace=short_rate,
     )

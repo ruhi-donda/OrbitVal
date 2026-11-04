@@ -31,7 +31,7 @@ from torch import nn
 class TrainConfig:
     lr: float = 1e-3
     batch_size: int = 256
-    max_epochs: int = 30
+    max_epochs: int = 80
     patience: int = 5          # epochs without improvement before stopping
     grad_clip: float = 1.0     # maximum gradient norm
 

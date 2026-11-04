@@ -26,7 +26,7 @@ from orbitval.config.hardware_3u_schema import load_hardware_config
 from orbitval.logging import set_log_level
 from orbitval.ml.data.telemanom import load_spacecraft, split_channels
 from orbitval.ml.data.training_sets import orbitval_training_set, telemanom_training_set
-from orbitval.ml.evaluate import evaluate
+from orbitval.ml.evaluate import EVENT_GRACE, SHORT_GRACE, evaluate
 from orbitval.ml.models.baseline import PersistenceBaseline
 from orbitval.ml.models.neural_detector import NeuralDetector
 from orbitval.ml.models.recurrent import HIDDEN_SIZE, MODELS, WINDOW
@@ -173,8 +173,10 @@ def summarize(outdir: Path) -> None:
             counts = ", ".join(f"{x['n_detected']}/{x['n_events']}" for x in m)
             print(f"{ds:<5}{name:<12} recall {counts:<20} "
                   f"rate {_mean_std([x['event_recall'] for x in m])}  "
-                  f"FA/10k {_mean_std([x['false_alarms_per_10k'] for x in m])}  "
-                  f"(FA runs {[x['n_false_alarms'] for x in m]})  "
+                  f"FA/10k grace {EVENT_GRACE} {_mean_std([x['false_alarms_per_10k'] for x in m])} "
+                  f"(runs {[x['n_false_alarms'] for x in m]})  "
+                  f"grace {SHORT_GRACE} {_mean_std([x['false_alarms_per_10k_short_grace'] for x in m])} "
+                  f"(runs {[x['n_false_alarms_short_grace'] for x in m]})  "
                   f"delay {_mean_std([x['median_delay'] for x in m])}  "
                   f"F1 {_mean_std([x['point_f1'] for x in m])}  "
                   f"PR-AUC {_mean_std([x['pr_auc'] for x in m])}  "
@@ -198,8 +200,11 @@ def summarize(outdir: Path) -> None:
                            if c["fault"] == fault and c["severity"] == s]
                 line += f"{_mean_std(recalls):>11}"
             print(line)
-        fa = [c["metrics"]["false_alarms_per_10k"] for r in rows for c in r["cells"]]
-        print(f"false alarms/10k on faulted missions: mean {np.mean(fa):.2f}, max {np.max(fa):.2f}")
+        for key, grace in (("false_alarms_per_10k", EVENT_GRACE),
+                           ("false_alarms_per_10k_short_grace", SHORT_GRACE)):
+            fa = [c["metrics"][key] for r in rows for c in r["cells"]]
+            print(f"false alarms/10k on faulted missions, grace {grace}: "
+                  f"mean {np.mean(fa):.2f}, max {np.max(fa):.2f}")
 
     _plot_maps(orbit, outdir)
 

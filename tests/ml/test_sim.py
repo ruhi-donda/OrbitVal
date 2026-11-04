@@ -11,7 +11,7 @@ import pytest
 from orbitval.config.hardware_3u_schema import load_hardware_config
 from orbitval.faults.base import FaultScenario
 from orbitval.ml.evaluate import EVAL_WARMUP
-from orbitval.ml.metrics import count_channel
+from orbitval.ml.metrics import count_channel, events_to_labels, summarize
 from orbitval.ml.models.baseline import PersistenceBaseline
 from orbitval.ml.sim.faults import FAULTS, SensorDrift, StuckSensor, build_fault
 from orbitval.ml.sim.missions import (
@@ -191,6 +191,26 @@ def test_grace_period_blames_recovery_alarm_on_event():
     graced = count_channel(s, 0.5, [(8, 15)], grace=10)
     assert no_grace.n_false_alarms == 1 and graced.n_false_alarms == 0
     assert graced.n_detected == 1 and graced.n_normal_steps == 30 - 8 - 10
+
+
+def test_onset_can_be_chosen_and_is_validated(hw):
+    m = make_mission(hw, seed=5, fault="sensor_drift", severity=0.5, onset=700)
+    assert m.events == [(700, 700 + FAULT_STEPS - 1)]
+    with pytest.raises(ValueError, match="onset"):
+        make_mission(hw, seed=5, fault="sensor_drift", severity=0.5, onset=1439)
+
+
+def test_false_alarms_reported_at_both_grace_periods(hw):
+    # An alarm 20 steps after the fault: false under grace 10, blamed under 74
+    s = np.zeros(200)
+    s[50] = s[120] = 1.0
+    long = count_channel(s, 0.5, [(40, 99)], grace=74)
+    short = count_channel(s, 0.5, [(40, 99)], grace=10)
+    m = summarize([long], s, events_to_labels([(40, 99)], 200), [short])
+    assert (m.n_false_alarms, m.n_false_alarms_short_grace) == (0, 1)
+    assert m.false_alarms_per_10k == 0.0
+    assert m.false_alarms_per_10k_short_grace == pytest.approx(10_000 / (200 - 60 - 10))
+    assert m.event_recall == 1.0                 # grace never changes detections
 
 
 def test_detectability_map_small_grid(hw):
