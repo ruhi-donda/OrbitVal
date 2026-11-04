@@ -231,7 +231,7 @@ class TestVersionSingleSource:
         assert tle.__version__ == __version__
 
     def test_pyproject_reads_version_from_the_package(self):
-        import tomllib
+        tomllib = pytest.importorskip("tomllib")  # stdlib from Python 3.11
         data = tomllib.loads((REPO / "pyproject.toml").read_text())
         assert "version" not in data["project"], (
             "version should be dynamic, not a second hardcoded copy"
