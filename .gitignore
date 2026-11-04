@@ -21,5 +21,5 @@ docs-template/DEBUG.md
 docs-template/README.md
 
 # Detector-validation mode: downloaded datasets and generated results
-data/
-results/
+/data/
+/results/

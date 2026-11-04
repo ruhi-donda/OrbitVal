@@ -452,4 +452,5 @@ and predates the models. So D11 understates models' recovery period.
 | 2026-11-03 | Stage 2 done; recovery grace period added (D11) |
 | 2026-11-03 | This log created |
 | 2026-11-04 | D18 resolved: 2 orbits held out for test missions; Stage 2 map rerun |
+| 2026-11-04 | Bug fixed: the `data/` line in `.gitignore` also matched `orbitval/ml/data/`, so the loader, windowing and training sets were missing from every earlier commit. Rule anchored to the repo root; checked with a clean clone. Commits before this one do not run from a fresh checkout |
 | 2026-11-04 | Stage 3 done (D24–D27). Stage 2 claim about stuck sensors corrected from measurements. Open questions: one-sided score, grace period length |
