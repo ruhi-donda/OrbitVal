@@ -15,7 +15,8 @@ from orbitval.ml.metrics import count_channel
 from orbitval.ml.models.baseline import PersistenceBaseline
 from orbitval.ml.sim.faults import FAULTS, SensorDrift, StuckSensor, build_fault
 from orbitval.ml.sim.missions import (
-    FAULT_STEPS, SPLIT_SEED_BASE, detectability_map, make_mission, mission_scores,
+    FAULT_STEPS, ORBIT_POOL, SPLIT_SEED_BASE, TEST_ORBITS, detectability_map,
+    make_mission, mission_scores, mission_seed,
 )
 from orbitval.ml.sim.telemetry import (
     CHANNELS, generate_telemetry, frames_to_array, illumination_from_periods,
@@ -159,6 +160,19 @@ def test_paired_design_shares_onset_across_faults(hw):
 def test_split_seed_ranges_disjoint():
     bases = sorted(SPLIT_SEED_BASE.values())
     assert all(b - a >= 100_000 for a, b in zip(bases, bases[1:]))
+
+
+def test_test_orbits_are_held_out():
+    assert len(ORBIT_POOL) == 6 and len(TEST_ORBITS) == 2
+    assert not set(ORBIT_POOL) & set(TEST_ORBITS)
+
+
+@pytest.mark.parametrize("split", ["train", "val", "dev", "test"])
+def test_each_split_flies_only_its_own_orbits(hw, split):
+    allowed = TEST_ORBITS if split == "test" else ORBIT_POOL
+    seen = {make_mission(hw, mission_seed(split, i)).orbit for i in range(25)}
+    assert seen <= set(allowed)
+    assert len(seen) > 1                       # really samples the pool
 
 
 # ── scoring and the detectability map ────────────────────────

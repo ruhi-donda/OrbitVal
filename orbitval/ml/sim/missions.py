@@ -4,7 +4,7 @@ orbitval/ml/sim/missions.py
 Missions for training and evaluating detectors on OrbitVal telemetry.
 
 A mission is 24 h of telemetry at 60 s steps (1440 steps, ~15 orbits)
-from one orbit in ORBIT_POOL, with its own noise and attitude phase.
+from one orbit, with its own noise and attitude phase.
 A faulted mission has exactly one fault event of FAULT_STEPS steps.
 Its onset is random, but always after the evaluation warm-up.
 
@@ -13,6 +13,10 @@ Splits use disjoint seed ranges so no mission appears in two of them:
     val    clean missions: early stopping + threshold
     dev    faulted missions for looking at results while building
     test   faulted missions scored once, by scripts/reproduce.sh
+
+Orbits are held out too: train, val and dev missions fly ORBIT_POOL;
+test missions fly only TEST_ORBITS, which no model ever trains on or is
+tuned on. A model can't pass the test by memorising eclipse timing.
 
 Paired design: inside a split, rep r uses the same base mission (orbit,
 noise, onset) for every fault and every severity. A change across the
@@ -37,11 +41,15 @@ ORBIT_POOL = (
     (500.0, 51.6, "2026-01-15T00:00:00Z"),
     (550.0, 53.0, "2026-03-01T00:00:00Z"),
     (525.0, 45.0, "2026-04-20T06:00:00Z"),
-    (575.0, 60.0, "2026-06-10T12:00:00Z"),
     (450.0, 40.0, "2026-07-15T00:00:00Z"),
     (600.0, 65.0, "2026-09-01T18:00:00Z"),
-    (480.0, 51.6, "2026-10-10T00:00:00Z"),
     (540.0, 70.0, "2026-12-01T00:00:00Z"),
+)
+# Test missions only. Altitude and inclination both lie inside the range
+# of ORBIT_POOL, so this tests a new orbit, not an extrapolation.
+TEST_ORBITS = (
+    (575.0, 60.0, "2026-06-10T12:00:00Z"),
+    (480.0, 51.6, "2026-10-10T00:00:00Z"),
 )
 
 SPLIT_SEED_BASE = {"train": 0, "val": 100_000, "dev": 200_000, "test": 300_000}
@@ -58,12 +66,21 @@ class Mission:
     events: list[tuple[int, int]]    # inclusive (start, end) steps
     illumination: np.ndarray         # (T,)
     seed: int
+    orbit: tuple[float, float, str]  # (altitude km, inclination deg, epoch)
     fault: str | None = None
     severity: float = 0.0
 
 
 def mission_seed(split: str, index: int) -> int:
     return SPLIT_SEED_BASE[split] + index
+
+
+def orbits_for_seed(seed: int) -> tuple:
+    """
+    Which orbits a mission may fly. Decided by the seed's range, so a
+    test-split seed can't end up on a training orbit or the reverse.
+    """
+    return TEST_ORBITS if seed >= SPLIT_SEED_BASE["test"] else ORBIT_POOL
 
 
 def _pick_onset(rng: np.random.Generator, illum: np.ndarray, sunlit_only: bool) -> int:
@@ -90,7 +107,9 @@ def make_mission(
 ) -> Mission:
     """One mission, clean (fault=None) or with one fault event."""
     rng = np.random.default_rng(seed)
-    alt, inc, epoch = ORBIT_POOL[rng.integers(len(ORBIT_POOL))]
+    orbits = orbits_for_seed(seed)
+    orbit = orbits[rng.integers(len(orbits))]
+    alt, inc, epoch = orbit
     sim = generate_telemetry(hardware, alt, inc, epoch, seed=seed,
                              duration_hours=MISSION_HOURS, step_s=STEP_S)
     frames = sim.frames
@@ -120,6 +139,7 @@ def make_mission(
         events=runs(labels),
         illumination=sim.illumination,
         seed=seed,
+        orbit=orbit,
         fault=fault,
         severity=severity,
     )
