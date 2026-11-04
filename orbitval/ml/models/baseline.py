@@ -26,12 +26,14 @@ class PersistenceBaseline:
     def __init__(self, score_config: ScoreConfig = ScoreConfig()):
         self.score_config = score_config
 
-    def forecast(self, x: np.ndarray, context: np.ndarray | None = None) -> np.ndarray:
+    def forecast(self, x: np.ndarray, context: np.ndarray | None = None, channel: int = 0) -> np.ndarray:
         """
         Args:
             x: (T,) series to forecast
             context: optional (T_ctx,) values immediately before x. With
                 context, x[0] gets a forecast too (the last context value).
+            channel: ignored. Persistence has no per-channel state, but
+                neural detectors do, and both are called the same way.
 
         Returns:
             pred: (T,) with pred[t] = x[t-1]; NaN where undefined
@@ -43,7 +45,7 @@ class PersistenceBaseline:
             pred[0] = context[-1]
         return pred
 
-    def score(self, x: np.ndarray, context: np.ndarray | None = None) -> np.ndarray:
+    def score(self, x: np.ndarray, context: np.ndarray | None = None, channel: int = 0) -> np.ndarray:
         """
         (T,) series -> (T,) anomaly scores (NaN during warm-up).
 

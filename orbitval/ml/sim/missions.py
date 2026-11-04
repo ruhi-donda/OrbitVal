@@ -32,7 +32,7 @@ from orbitval.engine.injection import run_injection
 from orbitval.ml.evaluate import EVAL_WARMUP, EVENT_GRACE
 from orbitval.ml.metrics import DetectionMetrics, count_channel, runs, summarize
 from orbitval.ml.sim.faults import FAULTS, build_fault
-from orbitval.ml.sim.telemetry import frames_to_array, generate_telemetry
+from orbitval.ml.sim.telemetry import CHANNELS, frames_to_array, generate_telemetry
 from orbitval.ml.threshold import Calibration, calibrate_threshold
 
 # (altitude km, inclination deg, epoch). Mid inclinations and different
@@ -158,7 +158,8 @@ def mission_scores(detector, data: np.ndarray, warmup: int = EVAL_WARMUP) -> np.
 
     (T, C) -> (T,), with the shared warm-up set to NaN.
     """
-    per_channel = np.stack([detector.score(data[:, c]) for c in range(data.shape[1])], axis=1)
+    per_channel = np.stack(
+        [detector.score(data[:, c], channel=c) for c in range(data.shape[1])], axis=1)
     finite = np.isfinite(per_channel)
     scores = np.where(finite, per_channel, -np.inf).max(axis=1)
     scores[~finite.any(axis=1)] = np.nan
@@ -214,3 +215,65 @@ def detectability_map(
                         for r in range(n_reps)]
             cells.append(CellResult(fault, sev, evaluate_cell(detector, missions, calibration.threshold)))
     return calibration, cells
+
+
+def fault_error_analysis(
+    detector,
+    hardware: HardwareConfig,
+    fault: str,
+    severity: float,
+    channel: str,
+    threshold: float,
+    split: str = "dev",
+    n_reps: int = 20,
+) -> dict:
+    """
+    Does the fault make the forecast error on its channel go up or down?
+
+    Paired comparison: each rep is flown twice, with and without the
+    fault, on identical noise. Inside the fault window we compare the
+    mean |forecast error| of the two runs, in the channel's own units.
+    Results are grouped by lighting, since a frozen sensor behaves very
+    differently in sunlight, in eclipse, and across a transition.
+    """
+    c = CHANNELS.index(channel)
+    rows = []
+    for r in range(n_reps):
+        seed = mission_seed(split, r)
+        clean = make_mission(hardware, seed)
+        faulted = make_mission(hardware, seed, fault, severity)
+        start, end = faulted.events[0]
+        window = slice(start, end + 1)
+
+        err_clean = np.abs(clean.data[:, c] - detector.forecast(clean.data[:, c], channel=c))[window]
+        err_fault = np.abs(faulted.data[:, c] - detector.forecast(faulted.data[:, c], channel=c))[window]
+        peak = float(np.max(mission_scores(detector, faulted.data)[window]))
+
+        illum = faulted.illumination[window]
+        lighting = "sunlit" if np.all(illum == 1.0) else "eclipse" if np.all(illum == 0.0) else "crossing"
+        rows.append({
+            "seed": seed,
+            "lighting": lighting,
+            "mean_error_clean": float(err_clean.mean()),
+            "mean_error_faulted": float(err_fault.mean()),
+            "peak_score": peak,
+            "detected": peak > threshold,
+        })
+
+    def group(items: list[dict]) -> dict:
+        return {
+            "n": len(items),
+            "mean_error_clean": float(np.mean([i["mean_error_clean"] for i in items])),
+            "mean_error_faulted": float(np.mean([i["mean_error_faulted"] for i in items])),
+            "n_error_down": sum(i["mean_error_faulted"] < i["mean_error_clean"] for i in items),
+            "n_detected": sum(i["detected"] for i in items),
+            "mean_peak_score": float(np.mean([i["peak_score"] for i in items])),
+        }
+
+    by_lighting = {"all": group(rows)}
+    for lighting in ("sunlit", "eclipse", "crossing"):
+        items = [i for i in rows if i["lighting"] == lighting]
+        if items:
+            by_lighting[lighting] = group(items)
+    return {"fault": fault, "severity": severity, "channel": channel,
+            "threshold": threshold, "by_lighting": by_lighting, "rows": rows}

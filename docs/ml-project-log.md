@@ -14,8 +14,8 @@ be traced to a choice and a commit. Updated at the end of every stage.
 |---|---|---|---|---|
 | 0+1 | `ml` extra, telemanom loader, windowing, persistence baseline, metrics, threshold | — | done | `83863f4`, `fcc5ba9` |
 | 2 | Telemetry generator, severity-scaled faults, onset labels, detectability map | Nov 5 | done (Nov 3) | `a486573` |
-| 3 | Small LSTM + GRU, 3 seeds, no ablations | Nov 7 | next | — |
-| 5 | Streamlit demo (runs before Stage 4) | Nov 9 | pending | — |
+| 3 | Small LSTM + GRU, 3 seeds, no ablations | Nov 7 | done (Nov 4) | see change history |
+| 5 | Streamlit demo (runs before Stage 4) | Nov 9 | next | — |
 | 4 | `scripts/reproduce.sh` + README results only | after 5 | pending | — |
 | 6 | Transformer | only if all else is done | dropped for now | — |
 
@@ -219,13 +219,57 @@ dispatch, and registry entries. Stage 4 is reduced to
 **D21. Stage order:** the demo (Stage 5) now comes before
 reproduce/README (Stage 4).
 
-**D22. A CI job for torch is deferred to Stage 3.**
-Stages 0–2 are numpy-only and covered by the existing CI job (coverage
-97%, gate 90%). When torch code lands, it gets a second job installing
-`.[ml,dev]`.
+**D22. Torch code has its own CI job (added in Stage 3).**
+The core job stays free of torch: `recurrent.py`, `neural_detector.py`,
+`train.py` and `run_neural.py` are omitted from its coverage, and their
+tests skip without torch (checked by blocking the import: 400 passed,
+1 skipped, 95.6% coverage against the 90% gate). The new `test-ml` job
+installs `.[ml,dev]` with CPU torch and runs `tests/ml`. It has not run
+on GitHub yet, because nothing has been pushed.
 
 **D23. Environment.** Tests run with `.venv/bin/python -m pytest`; dev
 dependencies were installed into `.venv` on 2026-11-03.
+
+### Models and training (Stage 3)
+
+**D24. Small one-layer LSTM and GRU, fixed settings, no tuning.**
+Window L = 64, hidden size 32. LSTM 4,513 parameters, GRU 3,393. Adam,
+learning rate 1e-3, MSE, batch 256, gradient norm clipped to 1.0, at
+most 30 epochs, early stopping with patience 5, seeds 0/1/2. These were
+set before the first run and not changed after seeing results.
+`orbitval/ml/models/recurrent.py`, `orbitval/ml/train.py`
+
+**D25. One shared univariate model per dataset (3 datasets).**
+Separate models for SMAP, MSL and OrbitVal, each trained on all of that
+dataset's channels pooled. OrbitVal's 6 channels share one model, so it
+can't use links between channels (e.g. solar drives battery). SMAP/MSL
+models also train on the *normal* train series of held-out channels,
+never on their test series (same reasoning as D3).
+
+**D26. Shared scoring is unchanged. Forecasts return to original units.**
+`scoring.py` was not touched. For OrbitVal, models work on standardized
+data (per-channel mean and std from training missions only), and the
+forecast is converted back before scoring, so the scoring sees the same
+raw values as persistence. To support this, `detector.score()` gained a
+`channel` argument, which persistence ignores; the test
+`test_wrapper_reproduces_persistence_with_a_last_value_model` confirms
+a copy-the-last-input network reproduces persistence exactly.
+
+**D27. Early stopping uses 10 clean val missions; the threshold uses 30.**
+Both are validation data. Early stopping uses fewer only for speed.
+
+**Known weaknesses of this setup, not fixed:**
+- *The 30-epoch cap binds.* All MSL runs and SMAP GRU runs had their
+  best epoch at 24–29, so these models might still be improving.
+- *OrbitVal LSTM varies a lot by seed.* Best epochs 18, 11 and 4, val
+  MSE 0.0087 to 0.0134. Seed 2 stopped early and did noticeably worse.
+- *Threshold context is in-sample for models.* SMAP/MSL validation is
+  scored with the train series as context (D3), and models fit that
+  series, so the rolling statistics start slightly low at the start of
+  validation. Persistence has no such effect.
+- *Dataset property:* per the telemanom README, values are scaled by the
+  min/max of the test set, so test ranges influence inputs for all
+  detectors. This comes from the dataset and can't be undone here.
 
 ## Results to date
 
@@ -290,9 +334,113 @@ are a resampling effect, not an improvement in the detector.
 
 **Reading:** persistence catches sudden jumps. It never catches slow
 drift, because each step is close to the last. It never catches a
-stuck sensor either: a frozen reading is perfectly predicted by "no
-change", so its error falls instead of rising. These two rows are where
-the learned models in Stage 3 have to show value.
+stuck sensor: a frozen reading is perfectly predicted by "no change", so
+its error falls (measured: 20/20 missions, 0.794 → 0.013 W).
+
+**Correction (2026-11-04):** the Stage 2 report suggested that an LSTM
+would fail to predict a flat signal, so its error would grow. Stage 3
+measurements show that is false outside eclipse transitions. See below.
+
+### Stage 3: LSTM and GRU, dev data, 3 seeds
+
+Produced by `scripts/run_stage3.sh`; tables by
+`python -m orbitval.ml.run_neural summarize`; files in `results/stage3/`.
+Training time summed over the 18 runs: about 71 minutes on CPU, 4 at a
+time. Seed-to-seed spread is shown as ±1 standard deviation.
+
+**Forecast error on validation (MSE, lower is better):**
+
+| | "no change" | LSTM (3 seeds) | GRU (3 seeds) |
+|---|---|---|---|
+| SMAP | 0.0306 | 0.0205–0.0210 | 0.0195–0.0196 |
+| MSL | 0.0552 | 0.0436–0.0444 | 0.0416–0.0432 |
+| OrbitVal (standardized) | 0.0200 | 0.0087–0.0134 | 0.0080–0.0096 |
+
+**SMAP/MSL dev channels:**
+
+| | Event recall by seed | Rate | FA/10k | False-alarm runs | Median delay | Point F1 | PR-AUC |
+|---|---|---|---|---|---|---|---|
+| SMAP persistence | 12/18 | 0.67 | 0.46 | 5 | 62.5 | 0.01 | 0.13 |
+| SMAP LSTM | 13/18, 15/18, 10/18 | 0.70±0.11 | 0.43±0.04 | 5, 5, 4 | 47.8±12.9 | 0.01 | 0.13 |
+| SMAP GRU | 13/18, 14/18, 15/18 | 0.78±0.05 | 0.55±0.07 | 5, 7, 6 | 38.0±9.1 | 0.01 | 0.13 |
+| MSL persistence | 3/11 | 0.27 | 1.50 | 2 | 7.0 | 0.00 | 0.26 |
+| MSL LSTM | 4/11, 4/11, 4/11 | 0.36±0.00 | 3.01±1.23 | 6, 4, 2 | 8.0 | 0.00 | 0.29 |
+| MSL GRU | 4/11, 4/11, 3/11 | 0.33±0.04 | 2.01±0.94 | 4, 3, 1 | 7.7±0.5 | 0.00 | 0.30 |
+
+Unscoreable events: 0 for every run. On real data the gains are small
+and rest on few events: MSL's difference is a single event, and the
+LSTM's SMAP range (10–15 of 18) spans persistence's 12. MSL LSTM also
+exceeds the false-alarm budget on test, on small counts.
+
+**OrbitVal dev map, event recall, mean over 3 seeds (20 missions per cell):**
+
+LSTM (thresholds 5.66, 5.57, 5.48):
+
+| fault | 0.05 | 0.1 | 0.2 | 0.35 | 0.5 | 0.75 | 1.0 |
+|---|---|---|---|---|---|---|---|
+| power_brownout | 0.35 | 0.90 | 1 | 1 | 1 | 1 | 1 |
+| sensor_noise | 0.48 | 0.95 | 1 | 1 | 1 | 1 | 1 |
+| eclipse_power_stress | 0 | 0.30 | 1 | 1 | 1 | 1 | 1 |
+| sensor_drift | 0 | 0 | 0 | 0 | 0 | 0.03 | 0.13 |
+| stuck_sensor | 0.12 | 0.12 | 0.12 | 0.12 | 0.12 | 0.12 | 0.12 |
+
+GRU (thresholds 5.92, 5.93, 6.00):
+
+| fault | 0.05 | 0.1 | 0.2 | 0.35 | 0.5 | 0.75 | 1.0 |
+|---|---|---|---|---|---|---|---|
+| power_brownout | 0.45 | 1 | 1 | 1 | 1 | 1 | 1 |
+| sensor_noise | 0.50 | 1 | 1 | 1 | 1 | 1 | 1 |
+| eclipse_power_stress | 0 | 0.25 | 1 | 1 | 1 | 1 | 1 |
+| sensor_drift | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.02 | 0.05 |
+| stuck_sensor | 0.40 | 0.40 | 0.40 | 0.40 | 0.40 | 0.40 | 0.40 |
+
+- Step faults and noise: models detect far lower severities than
+  persistence (persistence is 0 at severity 0.05 and 0.1).
+- **Drift is mostly missed.** At full severity: LSTM 8/60, 6 of them
+  from one seed; GRU 3/60. GRU's flat 0.02 is 1/60 at every severity,
+  which looks like a background alarm rather than a response to drift.
+- **Stuck sensor is caught only in part,** and unevenly: LSTM 7/60, all
+  from seed 0; GRU 24/60.
+
+**Does forecast error go down when the sensor freezes?** Solar channel,
+paired against the same mission with no fault, mean |error| in W inside
+the fault window, per seed:
+
+| Lighting of the fault window | Persistence | LSTM | GRU |
+|---|---|---|---|
+| Sunlit (n=8): error went down | 8/8 | 8/8, 8/8, 8/8 | 8/8, 8/8, 8/8 |
+| Sunlit: clean → frozen | 0.538 → 0.022 | ~0.28 → ~0.12 | ~0.25 → ~0.13 |
+| Sunlit: detected | 0/8 | 0, 0, 0 | 0, 0, 0 |
+| In eclipse (n=1): error went down | 1/1 | 1/1 ×3 | 1/1 ×3 |
+| Crossing a transition (n=11): error went down | 11/11 | 0, 0, 0 of 11 | 1, 0, 0 of 11 |
+| Crossing: clean → frozen | 1.044 → 0.008 | ~1.04 → 1.5–4.0 | ~0.94 → 5.6–6.1 |
+| Crossing: detected | 0/11 | 7, 0, 0 | 7, 10, 7 |
+
+So **yes, error goes down whenever the freeze doesn't span an eclipse
+transition,** for every detector and seed. The models then behave like
+persistence: once the input window has gone flat, they predict flat.
+Error goes up only when the frozen sensor fails to follow an eclipse
+transition the model expects. Every stuck-sensor detection comes from
+those crossing windows. The score alarms only on *high* error
+(`score > threshold`), so a falling error can never raise an alarm.
+Changing that would mean changing shared scoring, which needs the
+user's approval. The eclipse row has just one mission.
+
+**Drift at severity 1.0:** error does rise in most missions (e.g. GRU
+seed 0: 0.231 → 0.321 °C, down in only 1/20), but by too little to cross
+the threshold. A one-step forecaster anchors on its latest inputs, so it
+follows a slow ramp, and the rolling z-score also adapts to it.
+
+**False alarms on faulted missions (budget 2/10k):** persistence mean
+2.34, max 2.78; LSTM mean 3.00, max 6.02; GRU mean 4.13, max 9.72.
+Averaged over seeds, GRU sits at about 3.55/10k for faults that don't
+produce a large recovery (5–8 alarms in ~22,000 steps), and rises to
+7.4/10k for strong `eclipse_power_stress`. Checked on GRU seed 0: at
+severity 0.75 most of the extra alarms start 15–59 steps after the fault
+ends. Faulted data is still in the 64-step input window, and that is
+past the 10-step grace period (D11), which was sized for the smoothing
+and predates the models. So D11 understates models' recovery period.
+**Grace period not changed; open question.**
 
 ## Change history
 
@@ -304,3 +452,4 @@ the learned models in Stage 3 have to show value.
 | 2026-11-03 | Stage 2 done; recovery grace period added (D11) |
 | 2026-11-03 | This log created |
 | 2026-11-04 | D18 resolved: 2 orbits held out for test missions; Stage 2 map rerun |
+| 2026-11-04 | Stage 3 done (D24–D27). Stage 2 claim about stuck sensors corrected from measurements. Open questions: one-sided score, grace period length |

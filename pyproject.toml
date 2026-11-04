@@ -41,6 +41,16 @@ version = { attr = "orbitval._version.__version__" }
 [tool.setuptools.packages.find]
 include = ["orbitval*"]
 
+[tool.coverage.run]
+# Need the optional [ml] extra, so the core CI job can't import them. The
+# ml CI job runs their tests.
+omit = [
+    "orbitval/ml/models/recurrent.py",
+    "orbitval/ml/models/neural_detector.py",
+    "orbitval/ml/train.py",
+    "orbitval/ml/run_neural.py",
+]
+
 [tool.pytest.ini_options]
 # testpaths keeps a bare `pytest` off the root-level test_orbit.py scratch
 # script, which is not a test module and would hit the network.

@@ -43,3 +43,24 @@ jobs:
             --output "$RUNNER_TEMP/reports" \
             --registry "$RUNNER_TEMP/registry.jsonl"
           python -m orbitval registry verify --registry "$RUNNER_TEMP/registry.jsonl"
+
+  # Detector code that needs torch. Separate so the core install and its
+  # job stay free of heavy ML dependencies.
+  test-ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[ml,dev]"
+
+      - name: Test
+        run: pytest tests/ml
