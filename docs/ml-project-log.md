@@ -14,10 +14,12 @@ be traced to a choice and a commit. Updated at the end of every stage.
 |---|---|---|---|---|
 | 0+1 | `ml` extra, telemanom loader, windowing, persistence baseline, metrics, threshold | — | done | `83863f4`, `fcc5ba9` |
 | 2 | Telemetry generator, severity-scaled faults, onset labels, detectability map | Nov 5 | done (Nov 3) | `a486573` |
-| 3 | Small LSTM + GRU, 3 seeds, no ablations | Nov 7 | done (Nov 4) | see change history |
-| 5 | Streamlit demo (runs before Stage 4) | Nov 9 | next | — |
-| 4 | `scripts/reproduce.sh` + README results only | after 5 | pending | — |
-| 6 | Transformer | only if all else is done | dropped for now | — |
+| 3 | Small LSTM + GRU, 3 seeds, no ablations; rerun with 80-epoch cap and grace 74 | Nov 7 | done (Nov 4) | `3a0ba54`, `8873af3`, `849a06b` |
+| 5 | Streamlit demo (runs before Stage 4) | Nov 9 | done (Nov 4) | see change history |
+| 4 | `scripts/reproduce.sh` + README results only | after 5 | next | — |
+| — | One-time held-out test run | after 4 | pending | — |
+| — | Two-sided score ablation (D32) | Nov 10, if time remains | pending | — |
+| 6 | Transformer | — | skipped by decision | — |
 
 ## Decisions
 
@@ -110,7 +112,13 @@ tune on the labels being measured.
 Consecutive alarm steps count once, matching one page to an operator.
 Used the same way in calibration and in evaluation.
 
-**D11. 10-step recovery grace period.**
+**D11. Recovery grace period: 74 steps (originally 10).**
+*Changed 2026-11-04, user decision, after Stage 3.* 74 steps for every
+detector and dataset: a model's 64-step input window still holds faulty
+data after a fault ends, and the EWMA (span 10) lags after that. False
+alarms are reported at both 74 and 10. Grace only affects false alarms,
+never recall. The rest of this entry describes the original 10-step
+version.
 *Added during Stage 2.* When a fault ends, the signal snaps back and a
 forecaster sees one more large error. A new alarm run starting within
 10 steps after an event ends is blamed on that event: it counts as
@@ -224,8 +232,10 @@ The core job stays free of torch: `recurrent.py`, `neural_detector.py`,
 `train.py` and `run_neural.py` are omitted from its coverage, and their
 tests skip without torch (checked by blocking the import: 400 passed,
 1 skipped, 95.6% coverage against the 90% gate). The new `test-ml` job
-installs `.[ml,dev]` with CPU torch and runs `tests/ml`. It has not run
-on GitHub yet, because nothing has been pushed.
+installs `.[ml,dev]` with CPU torch and runs `tests/ml`. First run on
+GitHub: `test-ml` and Python 3.11–3.13 passed; 3.10 failed because an
+existing test imported `tomllib`, fixed with `importorskip` (`94a44a5`).
+The demo (`orbitval/ml/app/`) is omitted from core coverage too.
 
 **D23. Environment.** Tests run with `.venv/bin/python -m pytest`; dev
 dependencies were installed into `.venv` on 2026-11-03.
@@ -235,8 +245,10 @@ dependencies were installed into `.venv` on 2026-11-03.
 **D24. Small one-layer LSTM and GRU, fixed settings, no tuning.**
 Window L = 64, hidden size 32. LSTM 4,513 parameters, GRU 3,393. Adam,
 learning rate 1e-3, MSE, batch 256, gradient norm clipped to 1.0, at
-most 30 epochs, early stopping with patience 5, seeds 0/1/2. These were
-set before the first run and not changed after seeing results.
+most 80 epochs, early stopping with patience 5, seeds 0/1/2. These were
+set before the first run, with one exception: the cap was 30 until
+2026-11-04, then raised to 80 by user decision because several runs
+peaked at epoch 24–29. Effect measured below (30 vs 80 epochs).
 `orbitval/ml/models/recurrent.py`, `orbitval/ml/train.py`
 
 **D25. One shared univariate model per dataset (3 datasets).**
@@ -258,9 +270,64 @@ a copy-the-last-input network reproduces persistence exactly.
 **D27. Early stopping uses 10 clean val missions; the threshold uses 30.**
 Both are validation data. Early stopping uses fewer only for speed.
 
+### Demo (Stage 5)
+
+**D28. The demo reuses the real evaluation code and flies dev missions
+only.** `make_mission`, `mission_scores` and the thresholds calibrated
+on clean validation missions. It never adjusts a threshold and never
+flies test orbits. Logic in `orbitval/ml/app/core.py`, page in
+`orbitval/ml/app/demo.py`. Weights and thresholds are copied to the
+tracked `orbitval/ml/app/weights/` by `scripts/export_demo_weights.py`,
+which also writes `maps.json`, the heatmap counts, because `results/` is
+not tracked.
+
+**D29. Presets are found by written rules, not by eye.**
+`scripts/pick_demo_presets.py` takes the first dev mission and onset
+meeting each rule, using model seed 0 only, so a scene can't come from
+shopping for a lucky seed. Every other detector must miss the scene, and
+no detector may raise a false alarm. A test re-checks each scene's
+claim. **A preset is one chosen mission, so the page quotes the overall
+rate next to it.** This matters: the "stuck at eclipse edge" scene shows
+the LSTM catching it, but overall that happens 7/33 times, all from seed
+0.
+
+| Preset | Fault, severity | Mission, onset | Shown | Caught by | Overall, all dev windows |
+|---|---|---|---|---|---|
+| Brownout in sun | brownout, 0.1 | 0, 768 | LSTM | LSTM, GRU | persistence 0/20, LSTM 54/60, GRU 60/60 |
+| Stuck in sun | stuck | 0, 768 | GRU | none | persistence 0/8, LSTM 0/24, GRU 0/24 |
+| Stuck at eclipse edge | stuck | 0, 829 | GRU | LSTM, GRU | persistence 0/11, LSTM 7/33, GRU 24/33 |
+| Sensor drift | drift, 1.0 | 0, 767 | LSTM | none | persistence 0/20, LSTM 8/60, GRU 3/60 |
+
+The sunlit rule keeps 8 steps of full sun either side of the fault;
+sunlit stretches last only about 55 steps. In the stuck and drift scenes
+alarms do fire after the fault, when the signal snaps back. Those are
+recovery alarms, not detections.
+
+**D30. Plots say "surprise score (higher = more unusual)"** instead of
+"z-score". The axis is capped at 3x the threshold so a large spike can't
+flatten the alarm line. Alarms above the cap are drawn on the top edge.
+
+**D31. The page can't go blank on a rerun.** Streamlit reruns the script
+on every control change and can interrupt it. Each run first re-shows
+the last good table and chart, then replaces them. Charts are embedded
+in the page as data, not served as temporary media files. A failed run
+keeps the previous view and shows a warning. Tested with 60 preset and
+Play clicks 70–160 ms apart, and 7 fault-dropdown changes as fast as the
+browser tool could send them (slower than the clicks): 1,386 samples
+every 25 ms, with no missing chart or table and no exception.
+
+### Next
+
+**D32. Two-sided score as an ablation, if time remains (target Nov 10).**
+Alarm on unusually LOW error too, and measure the false-alarm cost. The
+headline shared scoring stays one-sided. Runs after the held-out test,
+and only on dev data, so it can't influence the test result.
+
 **Known weaknesses of this setup, not fixed:**
-- *The 30-epoch cap binds.* All MSL runs and SMAP GRU runs had their
-  best epoch at 24–29, so these models might still be improving.
+- *Longer training changed little (see 30 vs 80 epochs).* Early stopping
+  with patience 5 ended most runs well before the cap, some very early.
+- *MSL thresholds are unstable.* From 13.49 to 33.45 across seeds, with
+  false alarms of 1–10 runs on test. Results on MSL rest on few events.
 - *OrbitVal LSTM varies a lot by seed.* Best epochs 18, 11 and 4, val
   MSE 0.0087 to 0.0134. Seed 2 stopped early and did noticeably worse.
 - *Threshold context is in-sample for models.* SMAP/MSL validation is
@@ -277,6 +344,9 @@ All of these are on **dev** data. Held-out channels and the test
 mission split have not been scored.
 
 ### Stage 1: persistence baseline, SMAP/MSL dev channels
+
+*Stage 1 and 2 numbers below use the original grace of 10 (D11).
+Persistence at both grace values is in the Stage 3 tables.*
 
 Budget: 2 false alarms per 10k steps. Produced by
 `python -m orbitval.ml.run_telemanom --data data/telemanom`, saved in
@@ -345,32 +415,33 @@ measurements show that is false outside eclipse transitions. See below.
 
 Produced by `scripts/run_stage3.sh`; tables by
 `python -m orbitval.ml.run_neural summarize`; files in `results/stage3/`.
-Training time summed over the 18 runs: about 71 minutes on CPU, 4 at a
-time. Seed-to-seed spread is shown as ±1 standard deviation.
+Max 80 epochs; false alarms at both grace values. Training time summed
+over the 18 runs: about 90 minutes on CPU, 4 at a time. Seed-to-seed spread is shown as ±1 standard deviation.
 
 **Forecast error on validation (MSE, lower is better):**
 
 | | "no change" | LSTM (3 seeds) | GRU (3 seeds) |
 |---|---|---|---|
-| SMAP | 0.0306 | 0.0205–0.0210 | 0.0195–0.0196 |
-| MSL | 0.0552 | 0.0436–0.0444 | 0.0416–0.0432 |
+| SMAP | 0.0306 | 0.0205–0.0210 | 0.0188–0.0196 |
+| MSL | 0.0552 | 0.0415–0.0423 | 0.0408–0.0416 |
 | OrbitVal (standardized) | 0.0200 | 0.0087–0.0134 | 0.0080–0.0096 |
 
 **SMAP/MSL dev channels:**
 
-| | Event recall by seed | Rate | FA/10k | False-alarm runs | Median delay | Point F1 | PR-AUC |
-|---|---|---|---|---|---|---|---|
-| SMAP persistence | 12/18 | 0.67 | 0.46 | 5 | 62.5 | 0.01 | 0.13 |
-| SMAP LSTM | 13/18, 15/18, 10/18 | 0.70±0.11 | 0.43±0.04 | 5, 5, 4 | 47.8±12.9 | 0.01 | 0.13 |
-| SMAP GRU | 13/18, 14/18, 15/18 | 0.78±0.05 | 0.55±0.07 | 5, 7, 6 | 38.0±9.1 | 0.01 | 0.13 |
-| MSL persistence | 3/11 | 0.27 | 1.50 | 2 | 7.0 | 0.00 | 0.26 |
-| MSL LSTM | 4/11, 4/11, 4/11 | 0.36±0.00 | 3.01±1.23 | 6, 4, 2 | 8.0 | 0.00 | 0.29 |
-| MSL GRU | 4/11, 4/11, 3/11 | 0.33±0.04 | 2.01±0.94 | 4, 3, 1 | 7.7±0.5 | 0.00 | 0.30 |
+| | Event recall by seed | Rate | FA/10k, grace 74 | FA/10k, grace 10 | False-alarm runs (grace 74) | Median delay | Point F1 | PR-AUC |
+|---|---|---|---|---|---|---|---|---|
+| SMAP persistence | 12/18 | 0.67 | 0.46 | 0.46 | 5 | 62.5 | 0.01 | 0.13 |
+| SMAP LSTM | 13/18, 15/18, 10/18 | 0.70±0.11 | 0.43±0.04 | 0.43±0.04 | 5, 5, 4 | 47.8±12.9 | 0.01 | 0.13 |
+| SMAP GRU | 13/18, 14/18, 13/18 | 0.74±0.03 | 0.56±0.08 | 0.55±0.07 | 5, 7, 6 | 45.3±3.8 | 0.01 | 0.13 |
+| MSL persistence | 3/11 | 0.27 | 1.58 | 1.50 | 2 | 7.0 | 0.00 | 0.26 |
+| MSL LSTM | 5/11, 3/11, 4/11 | 0.36±0.07 | 4.22±2.69 | 4.01±2.56 | 10, 2, 4 | 8.0±0.8 | 0.00 | 0.29 |
+| MSL GRU | 4/11, 3/11, 3/11 | 0.30±0.04 | 1.85±0.99 | 1.76±0.94 | 4, 1, 2 | 7.3±0.5 | 0.00 | 0.30 |
 
 Unscoreable events: 0 for every run. On real data the gains are small
-and rest on few events: MSL's difference is a single event, and the
-LSTM's SMAP range (10–15 of 18) spans persistence's 12. MSL LSTM also
-exceeds the false-alarm budget on test, on small counts.
+and rest on few events: MSL's difference from persistence is at most a
+couple of events, and the LSTM's SMAP range (10–15 of 18) spans
+persistence's 12. MSL LSTM also exceeds the false-alarm budget on test,
+on small counts (seed 0: 10 runs, 7.91/10k).
 
 **OrbitVal dev map, event recall, mean over 3 seeds (20 missions per cell):**
 
@@ -431,16 +502,45 @@ seed 0: 0.231 → 0.321 °C, down in only 1/20), but by too little to cross
 the threshold. A one-step forecaster anchors on its latest inputs, so it
 follows a slow ramp, and the rolling z-score also adapts to it.
 
-**False alarms on faulted missions (budget 2/10k):** persistence mean
-2.34, max 2.78; LSTM mean 3.00, max 6.02; GRU mean 4.13, max 9.72.
-Averaged over seeds, GRU sits at about 3.55/10k for faults that don't
-produce a large recovery (5–8 alarms in ~22,000 steps), and rises to
-7.4/10k for strong `eclipse_power_stress`. Checked on GRU seed 0: at
-severity 0.75 most of the extra alarms start 15–59 steps after the fault
-ends. Faulted data is still in the 64-step input window, and that is
-past the 10-step grace period (D11), which was sized for the smoothing
-and predates the models. So D11 understates models' recovery period.
-**Grace period not changed; open question.**
+**False alarms on faulted missions (budget 2/10k):**
+
+| | Grace 74: mean, max | Grace 10: mean, max |
+|---|---|---|
+| Persistence | 2.49, 2.95 | 2.34, 2.78 |
+| LSTM | 2.99, 4.43 | 3.00, 6.02 |
+| GRU | 3.61, 4.43 | 4.13, 9.72 |
+
+The longer grace period removes the post-fault cluster that inflated the
+models' maximum (15–59 steps after the fault ended, GRU seed 0). It
+lowers the GRU mean by 13% and leaves the LSTM's about the same. All
+three detectors still sit above the 2/10k validation budget on faulted
+missions. Persistence goes *up* with the longer grace: it has no extra
+alarms to reclassify, and the same count over fewer normal steps (1016
+vs 1080 per mission) gives a rate about 6% higher.
+
+**30 vs 80 epochs: did longer training change anything?**
+
+- **OrbitVal: nothing.** Every run stopped before the old cap could
+  matter. Best epochs 18, 11, 4 (LSTM) and 20, 24, 18 (GRU). Model
+  tensors, thresholds and the whole map are identical, so the demo's
+  models are the same as the 30-epoch ones. Only `train_seconds` in the
+  saved file differs.
+- **SMAP: 1 of 6 runs changed.** GRU seed 2, best epoch 27 → 49, val MSE
+  0.01958 → 0.01880. Its recall went *down*, 15/18 → 13/18, with median
+  delay 26 → 48 steps.
+- **MSL: 5 of 6 runs changed.** All had val MSE improve by 3–6%. Recall:
+  LSTM 4,4,4 → 5,3,4 of 11; GRU 4,4,3 → 4,3,3 of 11. False-alarm runs
+  (grace 10): LSTM 6,4,2 → 10,2,4; GRU 4,3,1 → 4,1,2. Thresholds moved
+  a lot, e.g. GRU seed 1 from 18.35 to 33.45.
+- Persistence is identical, as it should be. GRU MSL seed 0 reproduced
+  its best epoch and val MSE exactly, confirming runs are deterministic.
+
+Reading: **better forecasts did not give better detection.** Across the
+six changed runs, recall rose once, fell three times and held twice,
+which is no more than seed-to-seed noise. A 30-epoch cap was a real
+limit on the forecasters but not on the detectors. Patience 5 is now the
+binding limit for most runs (OrbitVal LSTM seed 2 stops at epoch 4 and
+stays about 50% worse than seed 0). Not changed: it would be tuning.
 
 ## Change history
 
@@ -454,3 +554,6 @@ and predates the models. So D11 understates models' recovery period.
 | 2026-11-04 | D18 resolved: 2 orbits held out for test missions; Stage 2 map rerun |
 | 2026-11-04 | Bug fixed: the `data/` line in `.gitignore` also matched `orbitval/ml/data/`, so the loader, windowing and training sets were missing from every earlier commit. Rule anchored to the repo root; checked with a clean clone. Commits before this one do not run from a fresh checkout |
 | 2026-11-04 | Stage 3 done (D24–D27). Stage 2 claim about stuck sensors corrected from measurements. Open questions: one-sided score, grace period length |
+| 2026-11-04 | Decisions: grace period 74 with both values reported (D11); max epochs 80 (D24); shared scoring unchanged; transformer skipped; two-sided score as optional ablation (D32) |
+| 2026-11-04 | CI first ran on GitHub (D22); `tomllib` test fixed for Python 3.10 |
+| 2026-11-04 | Stage 3 rerun at 80 epochs; comparison above. Stage 5 demo done (D28–D31), using these weights |

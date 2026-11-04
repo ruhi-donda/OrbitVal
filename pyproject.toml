@@ -41,6 +41,9 @@ version = { attr = "orbitval._version.__version__" }
 [tool.setuptools.packages.find]
 include = ["orbitval*"]
 
+[tool.setuptools.package-data]
+"orbitval.ml.app" = ["weights/*"]
+
 [tool.coverage.run]
 # Need the optional [ml] extra, so the core CI job can't import them. The
 # ml CI job runs their tests.
@@ -49,6 +52,7 @@ omit = [
     "orbitval/ml/models/neural_detector.py",
     "orbitval/ml/train.py",
     "orbitval/ml/run_neural.py",
+    "orbitval/ml/app/*",
 ]
 
 [tool.pytest.ini_options]

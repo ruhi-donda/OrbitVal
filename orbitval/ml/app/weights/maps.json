@@ -1,0 +1,809 @@
+{
+  "gru": {
+    "seeds": 3,
+    "reps": 20,
+    "cells": [
+      {
+        "fault": "power_brownout",
+        "severity": 0.05,
+        "recall": 0.45,
+        "detected": 27,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.1,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.05,
+        "recall": 0.5,
+        "detected": 30,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.1,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.1,
+        "recall": 0.25,
+        "detected": 15,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.05,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.1,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.2,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.35,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.5,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.75,
+        "recall": 0.016666666666666666,
+        "detected": 1,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 1.0,
+        "recall": 0.05,
+        "detected": 3,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.05,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.1,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.2,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.35,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.5,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.75,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 1.0,
+        "recall": 0.4,
+        "detected": 24,
+        "total": 60
+      }
+    ],
+    "stuck_by_lighting": {
+      "all": {
+        "n_detected": 24,
+        "n": 60
+      },
+      "sunlit": {
+        "n_detected": 0,
+        "n": 24
+      },
+      "eclipse": {
+        "n_detected": 0,
+        "n": 3
+      },
+      "crossing": {
+        "n_detected": 24,
+        "n": 33
+      }
+    }
+  },
+  "lstm": {
+    "seeds": 3,
+    "reps": 20,
+    "cells": [
+      {
+        "fault": "power_brownout",
+        "severity": 0.05,
+        "recall": 0.35,
+        "detected": 21,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.1,
+        "recall": 0.9,
+        "detected": 54,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.05,
+        "recall": 0.48333333333333334,
+        "detected": 29,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.1,
+        "recall": 0.95,
+        "detected": 57,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.1,
+        "recall": 0.3,
+        "detected": 18,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.2,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 60,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.2,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.35,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.5,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.75,
+        "recall": 0.03333333333333333,
+        "detected": 2,
+        "total": 60
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 1.0,
+        "recall": 0.13333333333333333,
+        "detected": 8,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.05,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.1,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.2,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.35,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.5,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.75,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 1.0,
+        "recall": 0.11666666666666667,
+        "detected": 7,
+        "total": 60
+      }
+    ],
+    "stuck_by_lighting": {
+      "all": {
+        "n_detected": 7,
+        "n": 60
+      },
+      "sunlit": {
+        "n_detected": 0,
+        "n": 24
+      },
+      "eclipse": {
+        "n_detected": 0,
+        "n": 3
+      },
+      "crossing": {
+        "n_detected": 7,
+        "n": 33
+      }
+    }
+  },
+  "persistence": {
+    "seeds": 1,
+    "reps": 20,
+    "cells": [
+      {
+        "fault": "power_brownout",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.2,
+        "recall": 0.85,
+        "detected": 17,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.35,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "power_brownout",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.2,
+        "recall": 0.25,
+        "detected": 5,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.35,
+        "recall": 0.7,
+        "detected": 14,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.5,
+        "recall": 0.95,
+        "detected": 19,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "sensor_noise",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.2,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.35,
+        "recall": 0.95,
+        "detected": 19,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.5,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 0.75,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "eclipse_power_stress",
+        "severity": 1.0,
+        "recall": 1.0,
+        "detected": 20,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.2,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.35,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.5,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 0.75,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "sensor_drift",
+        "severity": 1.0,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.05,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.1,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.2,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.35,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.5,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 0.75,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      },
+      {
+        "fault": "stuck_sensor",
+        "severity": 1.0,
+        "recall": 0.0,
+        "detected": 0,
+        "total": 20
+      }
+    ],
+    "stuck_by_lighting": {
+      "all": {
+        "n_detected": 0,
+        "n": 20
+      },
+      "sunlit": {
+        "n_detected": 0,
+        "n": 8
+      },
+      "eclipse": {
+        "n_detected": 0,
+        "n": 1
+      },
+      "crossing": {
+        "n_detected": 0,
+        "n": 11
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "gru": {
+    "0": {
+      "file": "orbitval_gru_seed0.pt",
+      "threshold": 5.917402789746544
+    },
+    "1": {
+      "file": "orbitval_gru_seed1.pt",
+      "threshold": 5.929675254275016
+    },
+    "2": {
+      "file": "orbitval_gru_seed2.pt",
+      "threshold": 5.998879673155049
+    }
+  },
+  "lstm": {
+    "0": {
+      "file": "orbitval_lstm_seed0.pt",
+      "threshold": 5.659637506663475
+    },
+    "1": {
+      "file": "orbitval_lstm_seed1.pt",
+      "threshold": 5.569696741185522
+    },
+    "2": {
+      "file": "orbitval_lstm_seed2.pt",
+      "threshold": 5.481854725348904
+    }
+  },
+  "persistence": {
+    "threshold": 5.579939305297172
+  }
+}
