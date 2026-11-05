@@ -16,9 +16,10 @@ be traced to a choice and a commit. Updated at the end of every stage.
 | 2 | Telemetry generator, severity-scaled faults, onset labels, detectability map | Nov 5 | done (Nov 3) | `a486573` |
 | 3 | Small LSTM + GRU, 3 seeds, no ablations; rerun with 80-epoch cap and grace 74 | Nov 7 | done (Nov 4) | `3a0ba54`, `8873af3`, `849a06b` |
 | 5 | Streamlit demo (runs before Stage 4) | Nov 9 | done (Nov 4) | see change history |
-| 4 | `scripts/reproduce.sh` + README results only | after 5 | next | — |
-| — | One-time held-out test run | after 4 | pending | — |
-| — | Two-sided score ablation (D32) | Nov 10, if time remains | pending | — |
+| 4a | `scripts/reproduce.sh`, dev results (D33) | Nov 8 | done (Nov 5) | `0e3900a` |
+| — | Two-sided score variant, dev only (D32) | Nov 8 | next | — |
+| — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | pending | — |
+| 4b | README results section | after the held-out run | pending | — |
 | 6 | Transformer | — | skipped by decision | — |
 
 ## Decisions
@@ -301,7 +302,8 @@ the LSTM catching it, but overall that happens 7/33 times, all from seed
 The sunlit rule keeps 8 steps of full sun either side of the fault;
 sunlit stretches last only about 55 steps. In the stuck and drift scenes
 alarms do fire after the fault, when the signal snaps back. Those are
-recovery alarms, not detections.
+recovery alarms, not detections. The app opens on "Brownout in sun", and
+the buttons sit at the top of the sidebar, visible on every tab.
 
 **D30. Plots say "surprise score (higher = more unusual)"** instead of
 "z-score". The axis is capped at 3x the threshold so a large spike can't
@@ -318,10 +320,38 @@ every 25 ms, with no missing chart or table and no exception.
 
 ### Next
 
-**D32. Two-sided score as an ablation, if time remains (target Nov 10).**
-Alarm on unusually LOW error too, and measure the false-alarm cost. The
-headline shared scoring stays one-sided. Runs after the held-out test,
-and only on dev data, so it can't influence the test result.
+**D32. Two-sided score variant, before the held-out run.** *New order,
+user decision 2026-11-05, because the test set is touched once.* Also
+alarm on unusually LOW error, as an extra detector setting evaluated on
+dev only. Measure its false-alarm cost and its effect on the
+`stuck_sensor` and `sensor_drift` rows. The default shared score stays
+one-sided.
+
+**D33. `scripts/reproduce.sh` rebuilds all dev results and checks them.**
+Checks the setup, runs the tests, trains and evaluates every detector,
+writes the tables to `<outdir>/report.txt` and the code version to
+`environment.txt`, and compares results with the demo's tracked numbers
+and an optional reference directory (`scripts/compare_results.py`). Only
+training time may differ. It refuses to write into an existing results
+directory, and `--quick` checks the pipeline in about 3 minutes. It uses
+persistence results from the same run, so Stages 1 and 2 need no scripts
+of their own.
+
+Verified 2026-11-05 from clean commit `0e3900a`: 464 tests passed, 32
+minutes with 4 jobs, **0 differences across all 21 result files**
+against `results/stage3`, 18/18 checkpoints with identical tensors, and
+identical tables apart from training times. The check also fails when it
+should: against the 30-epoch run it reports 1,434 differences.
+
+Limits: this shows repeatability on one machine (Apple Silicon, Python
+3.13.2, torch 2.15.0, numpy 2.4.3). Another CPU or library version may
+give different floating-point results. A fresh clone can check only
+OrbitVal without a reference directory, since `results/` isn't tracked.
+
+**D34. One held-out run, after D32 is settled.** Persistence, LSTM, GRU
+and the two-sided variant, on the held-out channels and the held-out-
+orbit missions. No path to the test data exists in `reproduce.sh` yet, so
+it can't be scored by accident; that step is added together with D32.
 
 **Known weaknesses of this setup, not fixed:**
 - *Longer training changed little (see 30 vs 80 epochs).* Early stopping
@@ -557,3 +587,5 @@ stays about 50% worse than seed 0). Not changed: it would be tuning.
 | 2026-11-04 | Decisions: grace period 74 with both values reported (D11); max epochs 80 (D24); shared scoring unchanged; transformer skipped; two-sided score as optional ablation (D32) |
 | 2026-11-04 | CI first ran on GitHub (D22); `tomllib` test fixed for Python 3.10 |
 | 2026-11-04 | Stage 3 rerun at 80 epochs; comparison above. Stage 5 demo done (D28–D31), using these weights |
+| 2026-11-05 | New order: reproduce.sh, two-sided variant on dev (D32), one held-out run (D34), README. Demo: presets moved to the sidebar |
+| 2026-11-05 | `scripts/reproduce.sh` added and verified: full dev rerun matches exactly (D33) |
