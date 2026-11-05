@@ -231,6 +231,17 @@ def test_preset_note_quotes_the_overall_rate(preset):
         assert name in note
 
 
+def test_app_opens_on_the_brownout_in_sun_preset():
+    assert PRESETS[0].label == "Brownout in sun"
+    app = _app()
+    assert app.selectbox(key="fault").value == "power_brownout"
+    assert app.slider(key="severity").value == PRESETS[0].severity
+    assert app.slider(key="onset").value == PRESETS[0].onset
+    assert any(PRESETS[0].blurb in c.value for c in app.caption)
+    # The buttons live in the sidebar, so they're on every tab
+    assert [b.key for b in app.sidebar.button] == [f"preset_{i}" for i in range(len(PRESETS))]
+
+
 def test_preset_buttons_set_the_controls_and_note():
     app = _app()
     for i, preset in enumerate(PRESETS):

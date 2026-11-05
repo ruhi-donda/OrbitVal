@@ -48,7 +48,11 @@ st.set_page_config(page_title="OrbitVal detector demo", layout="wide")
 COMPACT_CSS = """
 <style>
 .block-container { padding: 1.1rem 2rem 0.5rem 2rem; }
-[data-testid="stSidebarHeader"] { padding-bottom: 0; }
+[data-testid="stSidebarHeader"] { padding-bottom: 0; height: 2rem; min-height: 2rem; }
+[data-testid="stSidebarUserContent"] { padding-top: 0; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+[data-testid="stSidebar"] h3 { padding: 0.3rem 0 0.5rem 0; }
+[data-testid="stSidebar"] .stButton button { min-height: 2rem; padding: 0.1rem 0.5rem; }
 .stTable table { font-size: 1.05rem; }
 .stTable th, .stTable td { padding: 0.15rem 0.6rem !important; }
 .demo-chart img { width: 100%; display: block; border-radius: 4px; }
@@ -163,13 +167,16 @@ def summary_table(runs_by_name: dict, shown: str) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("Detector")
 
 
-# First visit opens on the first preset
+# A new session opens on the first preset, brownout in sun
 if "fault" not in st.session_state:
     apply_preset(0)
 
 with st.sidebar:
+    st.subheader("Presets")
+    for i, preset in enumerate(PRESETS):
+        st.button(preset.label, key=f"preset_{i}", width="stretch", on_click=apply_preset, args=(i,))
     light = st.toggle("Light theme (for projectors)", key="light")
-    st.subheader("Inject a fault")
+    st.subheader("Or inject a fault")
     fault = st.selectbox("Fault type", [NO_FAULT, *FAULTS], key="fault", on_change=on_fault_change)
     no_fault = fault == NO_FAULT
     severity = st.slider("Severity", 0.0, 1.0, step=0.05, key="severity", on_change=on_control_change,
@@ -202,11 +209,7 @@ with maps_tab:
     )
 
 with live_tab:
-    buttons = st.columns(len(PRESETS) + 1)
-    for i, preset in enumerate(PRESETS):
-        buttons[i].button(preset.label, key=f"preset_{i}", width="stretch",
-                          on_click=apply_preset, args=(i,))
-    play = buttons[len(PRESETS)].button("▶ Play", key="play", type="primary", width="stretch",
+    play = st.columns([1, 4])[0].button("▶ Play", key="play", type="primary", width="stretch",
                                         disabled=no_fault)
 
     note_slot = st.empty()
