@@ -8,10 +8,14 @@
 #   5. check the results against the demo's tracked numbers, and against
 #      a reference directory if one is given
 #
-# Dev data only. Nothing here scores the held-out channels or the test
-# missions. CPU only. The full run took about 30 minutes with 4 jobs.
+# Dev data only, unless --held-out is given. CPU only. The full run took
+# about 30 minutes with 4 jobs.
 #
-# Usage: scripts/reproduce.sh [--outdir DIR] [--jobs N] [--compare DIR] [--quick]
+# Usage: scripts/reproduce.sh [--outdir DIR] [--jobs N] [--compare DIR] [--quick] [--held-out]
+#   --held-out  after the dev checks pass, also repeat the one held-out
+#               run (scripts/run_heldout.sh) with the weights just trained.
+#               The decisions it reports on were frozen before the first
+#               held-out run; repeating it checks the numbers, nothing more.
 #   --quick   1 training epoch and few missions, to check the pipeline
 #             runs (a few minutes). Its numbers mean nothing, so it skips
 #             step 5.
@@ -25,17 +29,23 @@ OUT="results/reproduce"
 JOBS=4
 COMPARE=""
 QUICK=0
+HELD_OUT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --outdir)  OUT="$2"; shift 2 ;;
     --jobs)    JOBS="$2"; shift 2 ;;
     --compare) COMPARE="$2"; shift 2 ;;
     --quick)   QUICK=1; shift ;;
+    --held-out) HELD_OUT=1; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
 export PYTHON="${PYTHON:-.venv/bin/python}"
+if [ "$QUICK" = 1 ] && [ "$HELD_OUT" = 1 ]; then
+  echo "--quick weights are not trained: they must never score held-out data" >&2
+  exit 2
+fi
 
 echo "== 1. Checking setup"
 for sub in train test labeled_anomalies.csv; do
@@ -86,3 +96,9 @@ fi
 echo "== 5. Comparing"
 # shellcheck disable=SC2086
 "$PYTHON" scripts/compare_results.py "$OUT" $COMPARE
+
+if [ "$HELD_OUT" = 1 ]; then
+  echo "== 6. Held-out run"
+  scripts/run_heldout.sh "$OUT" "$OUT" "$JOBS" >> "$OUT/run.log" 2>&1
+  echo "held-out report: $OUT/heldout_report.txt"
+fi

@@ -16,8 +16,9 @@ The false-alarm budget is split, 1 per 10k steps for each side and 2 in
 total, so the setting stays comparable to the one-sided detector at 2.
 On a mission, each side takes its own max over channels.
 
-Dev data only: no function here accepts a split, and OrbitVal missions
-are always drawn from the dev seeds.
+Dev data by default. The held-out run (run_heldout.py) passes
+split="test" for OrbitVal and the held-out channels for SMAP/MSL; the
+thresholds always come from clean validation data.
 """
 
 from dataclasses import asdict, dataclass
@@ -177,32 +178,37 @@ def mission_lighting(illumination: np.ndarray) -> str:
 
 def evaluate_orbitval(detector, hardware: HardwareConfig, n_reps: int = 20, n_val: int = 30,
                       faults: tuple[str, ...] = tuple(FAULTS),
-                      severities: tuple[float, ...] = SEVERITIES) -> dict:
+                      severities: tuple[float, ...] = SEVERITIES,
+                      split: str = "dev") -> dict:
     """
-    Every setting on OrbitVal dev missions. Each rep is also flown with
-    no fault, on identical noise, so a low-side alarm inside the fault
-    window can be checked against the same steps of the clean twin.
+    Every setting on OrbitVal missions of `split` ("dev", or "test" for
+    the held-out orbits). Each rep is also flown with no fault, on
+    identical noise, so an alarm inside the fault window can be checked
+    against the same steps of the clean twin. Keys named clean_<split>
+    and faulted_<split> hold the twins and the faulted missions.
     """
+    if split not in ("dev", "test"):
+        raise ValueError("split must be 'dev' or 'test'")
     val = clean_missions(hardware, "val", n_val)
     val_z = [channel_z(detector, m.data) for m in val]
     val_highs, val_lows = zip(*[mission_sides(z) for z in val_z])
     cal = calibrate_sides(list(val_highs), list(val_lows))
 
-    twins = clean_missions(hardware, "dev", n_reps)
+    twins = clean_missions(hardware, split, n_reps)
     twin_z = [channel_z(detector, m.data) for m in twins]
     twin_sides = [mission_sides(z) for z in twin_z]
     low_th = cal.low.threshold
 
-    cells, rows, dev_low_alarms = [], [], []
+    cells, rows, faulted_low_alarms = [], [], []
     for fault in faults:
         for severity in severities:
             tally = Tally()
             for r in range(n_reps):
-                m = make_mission(hardware, mission_seed("dev", r), fault, severity)
+                m = make_mission(hardware, mission_seed(split, r), fault, severity)
                 z = channel_z(detector, m.data)
                 high, low = mission_sides(z)
                 tally.add(high, low, m.labels, m.events, cal)
-                dev_low_alarms += [
+                faulted_low_alarms += [
                     {"fault": fault, "severity": severity, **alarm}
                     for alarm in mission_low_alarms(m.seed, high, low, z, m.illumination, m.events, cal)]
 
@@ -241,12 +247,13 @@ def evaluate_orbitval(detector, hardware: HardwareConfig, n_reps: int = 20, n_va
         "calibration": asdict(cal),
         "reps": n_reps,
         "val": clean_rates(list(val_highs), list(val_lows), cal),
-        "clean_dev": clean_rates([h for h, _ in twin_sides], [lo for _, lo in twin_sides], cal),
+        f"clean_{split}": clean_rates([h for h, _ in twin_sides], [lo for _, lo in twin_sides], cal),
         "cells": cells,
         "rows": rows,
-        "low_alarms": {"val": val_low_alarms, "clean_dev": twin_low_alarms, "faulted_dev": dev_low_alarms},
-        "lighting_shares": {"val": lighting_shares(val), "clean_dev": lighting_shares(twins)},
-        "low_tail": low_tail(detector, hardware, val, val_z, cal, n_reps),
+        "low_alarms": {"val": val_low_alarms, f"clean_{split}": twin_low_alarms,
+                       f"faulted_{split}": faulted_low_alarms},
+        "lighting_shares": {"val": lighting_shares(val), f"clean_{split}": lighting_shares(twins)},
+        "low_tail": low_tail(detector, hardware, val, val_z, cal, n_reps, split),
     }
 
 
@@ -264,7 +271,7 @@ def z_floor(x: np.ndarray, pred: np.ndarray, config: ScoreConfig = ScoreConfig()
 
 
 def low_tail(detector, hardware: HardwareConfig, val: list, val_z: list[np.ndarray],
-             cal: TwoSidedCalibration, n_reps: int) -> dict:
+             cal: TwoSidedCalibration, n_reps: int, split: str = "dev") -> dict:
     """
     Can the low side reach its threshold on the channel a fault changed?
     Compares each fault's lowest z, and the floor at that step, with the
@@ -278,7 +285,7 @@ def low_tail(detector, hardware: HardwareConfig, val: list, val_z: list[np.ndarr
         c = CHANNELS.index(channel)
         rows = []
         for r in range(n_reps):
-            m = make_mission(hardware, mission_seed("dev", r), fault, 1.0)
+            m = make_mission(hardware, mission_seed(split, r), fault, 1.0)
             x = m.data[:, c]
             start, end = m.events[0]
             z = detector.score(x, channel=c)[start:end + 1]
@@ -298,18 +305,21 @@ def flat_fraction(x: np.ndarray) -> float:
     return float(np.mean(np.diff(x) == 0))
 
 
-def evaluate_telemanom(detector, channels: list[ChannelSeries], dev: list[ChannelSeries]) -> dict:
+def evaluate_telemanom(detector, channels: list[ChannelSeries],
+                       eval_channels: list[ChannelSeries], label: str = "dev") -> dict:
     """
-    Every setting on SMAP/MSL dev channels. As in evaluate.evaluate(), the
-    thresholds come from the val series of all channels, which are normal
-    data, and only dev channels' test series are scored.
+    Every setting on SMAP/MSL channels: dev channels while building,
+    held-out channels in the one held-out run. As in evaluate.evaluate(),
+    the thresholds come from the val series of all channels, which are
+    normal data, and only eval_channels' test series are scored. `label`
+    names the scored set in the output ("dev" or "held_out").
     """
     val_z = score_val(detector, channels)
     val_lows = [-z for z in val_z]
     cal = calibrate_sides(val_z, val_lows)
 
     tally, rows, low_by_channel = Tally(), [], []
-    for c, z in zip(dev, score_test(detector, dev)):
+    for c, z in zip(eval_channels, score_test(detector, eval_channels)):
         low = -z
         tally.add(z, low, c.test_labels(), c.test_events, cal)
         for i, event in enumerate(c.test_events):
@@ -336,5 +346,5 @@ def evaluate_telemanom(detector, channels: list[ChannelSeries], dev: list[Channe
         "val": clean_rates(val_z, val_lows, cal),
         "metrics": tally.metrics(),
         "rows": rows,
-        "low_alarms": {"val": val_by_channel, "dev": low_by_channel},
+        "low_alarms": {"val": val_by_channel, label: low_by_channel},
     }

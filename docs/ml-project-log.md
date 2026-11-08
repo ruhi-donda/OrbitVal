@@ -365,10 +365,30 @@ Limits: this shows repeatability on one machine (Apple Silicon, Python
 give different floating-point results. A fresh clone can check only
 OrbitVal without a reference directory, since `results/` isn't tracked.
 
-**D34. One held-out run, after D32 is settled.** Persistence, LSTM, GRU
-and the two-sided variant, on the held-out channels and the held-out-
-orbit missions. No path to the test data exists in `reproduce.sh` yet, so
-it can't be scored by accident; that step is added together with D32.
+*Verified again 2026-11-08, with the two-sided step*, from commit
+`23bde54` in a separate checkout, with torch limited to 2 threads per job
+(`--threads 2`, `OMP_NUM_THREADS=2`): 483 tests passed, **0 differences
+across all result files including the 21 two-sided ones**, 0 against the
+demo's numbers, 18/18 checkpoints with identical tensors. Wall time was
+about 6 hours at 48% CPU, so the machine probably slept; CPU time was
+about 2.8 hours.
+
+**D34. One held-out run, after D32 is settled.** Persistence, LSTM, GRU,
+each one-sided and two-sided, on the held-out SMAP/MSL channels and the
+held-out-orbit OrbitVal missions, with clean-twin attribution on
+OrbitVal. Thresholds come from the same clean validation data as on dev.
+`scripts/run_heldout.sh OUTDIR WEIGHTS` (`orbitval/ml/run_heldout.py`)
+first writes `frozen.json` with the commit and the SHA-256 of every
+checkpoint. It refuses uncommitted code, a folder that already has a
+held-out run, a result file that already exists, and code or weights
+that changed since the freeze. `reproduce.sh --held-out` repeats it after
+the dev checks pass, and refuses `--quick`. Its tests never score real
+held-out data: OrbitVal test missions are redirected to dev missions,
+and SMAP/MSL use a fake dataset.
+
+**Freeze rule (user, 2026-11-07).** After the held-out run nothing is
+retuned on its results: no threshold, budget, grace period, window,
+model or setting changes. Its numbers are reported as they are.
 
 **D36. Future work, not built: a zero-variance check for frozen sensors.**
 *User decision, 2026-11-07.* D32 shows the shared score can't separate a

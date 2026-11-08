@@ -113,15 +113,21 @@ def _alarm_table(alarms: list[dict], shares: dict | None) -> None:
     print(f"    run length: median {lengths[len(lengths) // 2]}, longest {lengths[-1]}")
 
 
-def summarize(outdir: Path) -> None:
-    results = [json.loads(p.read_text()) for p in sorted((outdir / "two_sided").glob("*.json"))]
+def summarize(outdir: Path, sub: str = "two_sided", split: str = "dev",
+              channels_label: str = "dev") -> None:
+    """
+    Print the tables. The held-out run reuses this with its own folder,
+    split "test" (OrbitVal) and channels_label "held_out" (SMAP/MSL).
+    """
+    results = [json.loads(p.read_text()) for p in sorted((outdir / sub).glob("*.json"))]
+    clean, faulted = f"clean_{split}", f"faulted_{split}"
     print(f"\nFalse alarms are runs, shown as grace {EVENT_GRACE}/grace {SHORT_GRACE}.")
 
     orbit = [r for r in results if r["dataset"] == "orbitval"]
-    print("\n=== OrbitVal dev missions: thresholds and clean false alarms per side ===")
+    print(f"\n=== OrbitVal {split} missions: thresholds and clean false alarms per side ===")
     for r in orbit:
         print(f"{r['model']:<12} seed {r['seed']}  {_thresholds(r)}")
-        for name in ("val", "clean_dev"):
+        for name in ("val", clean):
             c = r[name]
             print(f"    {name:<10} {c['normal_steps']} steps: "
                   + ", ".join(f"{s} {c[s]['false_alarms']}" for s in
@@ -206,13 +212,13 @@ def summarize(outdir: Path) -> None:
     print("\n=== OrbitVal: where low-side false alarms happen, all seeds ===")
     for name in DETECTORS:
         rows = [r for r in orbit if r["model"] == name]
-        for split, shares in (("val", "val"), ("clean_dev", "clean_dev"), ("faulted_dev", "clean_dev")):
-            print(f"{name}, {split}")
-            alarms = [{**a, "seed": (r["seed"], a["seed"])} for r in rows for a in r["low_alarms"][split]]
+        for part, shares in (("val", "val"), (clean, clean), (faulted, clean)):
+            print(f"{name}, {part}")
+            alarms = [{**a, "seed": (r["seed"], a["seed"])} for r in rows for a in r["low_alarms"][part]]
             _alarm_table(alarms, rows[0]["lighting_shares"][shares] if rows else None)
 
     for ds in ("smap", "msl"):
-        print(f"\n=== {ds.upper()} dev channels ===")
+        print(f"\n=== {ds.upper()} {channels_label} channels ===")
         for name in DETECTORS:
             for r in (r for r in results if r["dataset"] == ds and r["model"] == name):
                 c = outcome_counts(r["rows"])
@@ -232,7 +238,7 @@ def summarize(outdir: Path) -> None:
                 print(f"    lost {lost}; gained {gained}")
                 print("    low-side false alarms by channel (flat share): " + ", ".join(
                     f"{a['channel']} {a['false_alarms']} ({a['flat_fraction']:.2f})"
-                    for a in r["low_alarms"]["dev"]))
+                    for a in r["low_alarms"][channels_label]))
 
 
 def main(argv: list[str] | None = None) -> None:
