@@ -18,7 +18,7 @@ be traced to a choice and a commit. Updated at the end of every stage.
 | 5 | Streamlit demo (runs before Stage 4) | Nov 9 | done (Nov 4) | see change history |
 | 4a | `scripts/reproduce.sh`, dev results (D33) | Nov 8 | done (Nov 5) | `0e3900a` |
 | — | Two-sided score variant, dev only (D32) | Nov 8 | done (Nov 5), approved Nov 7 | see change history |
-| — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | next | — |
+| — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | done (Nov 8), frozen | `3bb2e90` |
 | 4b | README results section | after the held-out run | pending | — |
 | 6 | Transformer | — | skipped by decision | — |
 
@@ -758,6 +758,88 @@ Limits: thresholds rest on 3 runs per side (OrbitVal), 2 (SMAP) or 1
 (MSL). The missions in a rep share a base across cells, so counts over
 severities aren't independent: 7 lost events can be one mission.
 
+### Held-out run (D34): frozen, commit `3bb2e90`
+
+Run once on 2026-11-08 with `scripts/run_heldout.sh results/heldout
+results/stage3`. `results/heldout/frozen.json` records the commit and the
+SHA-256 of every checkpoint, and the report is in
+`results/heldout/heldout_report.txt`. Weights are the 80-epoch Stage 3
+checkpoints, which `reproduce.sh` rebuilt tensor for tensor (D33).
+Thresholds are the dev ones, from the same clean validation data.
+**Frozen: nothing below has been or will be used to retune anything.**
+
+**SMAP, 37 held-out channels, 49 events**, one-sided at 2 (headline):
+
+| Detector | Seed | Recall | FA runs | FA/10k (74/10) | Median delay | Point F1 | PR-AUC |
+|---|---|---|---|---|---|---|---|
+| persistence | — | 30/49 | 36 | 1.48/1.46 | 34 | 0.009 | 0.156 |
+| LSTM | 0 | 31/49 | 13 | 0.53/0.53 | 33 | 0.010 | 0.174 |
+| LSTM | 1 | 34/49 | 25 | 1.03/1.01 | 34 | 0.013 | 0.175 |
+| LSTM | 2 | 28/49 | 13 | 0.53/0.53 | 38 | 0.009 | 0.166 |
+| GRU | 0 | 30/49 | 26 | 1.07/1.06 | 29 | 0.010 | 0.176 |
+| GRU | 1 | 32/49 | 27 | 1.11/1.10 | 28 | 0.012 | 0.171 |
+| GRU | 2 | 35/49 | 30 | 1.23/1.22 | 34 | 0.012 | 0.182 |
+
+**MSL, 19 held-out channels, 25 events**, one-sided at 2:
+
+| Detector | Seed | Recall | FA runs | FA/10k (74/10) | Median delay | Point F1 | PR-AUC |
+|---|---|---|---|---|---|---|---|
+| persistence | — | 4/25 | 4 | 0.94/0.92 | 11 | 0.002 | 0.149 |
+| LSTM | 0 | 7/25 | 16 | 3.78/3.66 | 14 | 0.008 | 0.158 |
+| LSTM | 1 | 6/25 | 6 | 1.42/1.37 | 13 | 0.004 | 0.180 |
+| LSTM | 2 | 6/25 | 8 | 1.89/1.83 | 13 | 0.005 | 0.175 |
+| GRU | 0 | 7/25 | 12 | 2.83/2.75 | 14 | 0.005 | 0.167 |
+| GRU | 1 | 6/25 | 4 | 0.94/0.92 | 14 | 0.003 | 0.163 |
+| GRU | 2 | 6/25 | 7 | 1.65/1.60 | 13 | 0.004 | 0.174 |
+
+Against dev (SMAP 18 events, MSL 11): SMAP recall per run was 12; 13, 15,
+10; 13, 14, 13 of 18 (56–83%) and is 30; 31, 34, 28; 30, 32, 35 of 49
+(57–71%) held out. MSL was 3; 5, 3, 4; 4, 3, 3 of 11 (27–45%) and is 4;
+7, 6, 6; 7, 6, 6 of 25 (16–28%). The neural models beat persistence on
+SMAP by −2 to +5 events of 49, and on MSL by 2–3 of 25: small, and inside
+seed spread on SMAP. Held-out false alarms stay under the budget of 2 on
+SMAP and are over it for 2 of 7 MSL runs.
+
+**OrbitVal, held-out orbits, missions detected, one-sided at 2**
+(persistence out of 20, models out of 60 over 3 seeds; severities 0.05,
+0.1, 0.2, 0.35, 0.5, 0.75, 1.0):
+
+| Fault | persistence | LSTM | GRU |
+|---|---|---|---|
+| power_brownout | 0, 0, 17, 20, 20, 20, 20 | 26, 59, 60, 60, 60, 60, 60 | 37, 60, 60, 60, 60, 60, 60 |
+| sensor_noise | 0, 0, 5, 13, 19, 20, 20 | 18, 54, 60, 60, 60, 60, 60 | 32, 60, 60, 60, 60, 60, 60 |
+| eclipse_power_stress | 0, 0, 0, 16, 20, 20, 20 | 1, 13, 60, 60, 60, 60, 60 | 0, 12, 60, 60, 60, 60, 60 |
+| sensor_drift | 0 at every severity | 1, 1, 1, 1, 1, 3, 12 | 0, 0, 0, 0, 0, 0, 4 |
+| stuck_sensor | 0 | 6 (flat by design) | 20 (flat by design) |
+
+Clean-twin attribution (D35): persistence and GRU lose nothing, since no
+one-sided catch also fires on the twin. For LSTM, one mission per row
+alarms on the twin too: brownout 59/60 from 0.2 up, drift 0 below 0.75
+then 2 and 12, stuck 5/60. Stuck catches are all in eclipse crossings
+again (LSTM 42, GRU 140 of 273 crossing missions; 0 of 147 sunlit or
+eclipse). Clean-twin false alarms per 10k: persistence 4.46, LSTM 4.76,
+GRU 2.83, against 2.23, 2.83, 3.57 on dev orbits. The validation budget
+of 2 doesn't hold on new orbits for persistence and LSTM.
+
+**Two-sided on held-out data: the dev result holds.**
+- OrbitVal: the low side catches **0 attributable** faults for every
+  detector. GRU stuck drops 140 → 126 of 420 (14 lost to the stricter high
+  threshold, 7 kept by the low side, none of them attributable).
+- SMAP: two-sided recall 23; 30, 29, 25; 26, 27, 26 of 49, a drop of 1–9
+  per run. The low side gains 1–6 events (A-7, A-9, D-3, D-4, E-8, S-1),
+  several on channels that also give low-side false alarms. False alarms:
+  0.49–3.73 per 10k, against 0.53–1.48 one-sided.
+- MSL: recall within ±2 of one-sided; false alarms 0.47–3.78 per 10k.
+- Persistence on OrbitVal: 19 low-side false alarms on 20 clean twins
+  (battery, near full charge, in sunlight, across 9 missions) give
+  11.61 per 10k two-sided, against 4.46 one-sided. Lighting shares match
+  dev (36% umbra), so more sunlight doesn't explain it. Cause not
+  investigated further: that would be tuning on test results.
+
+Limits: one held-out set, scored once. 20 missions per cell. SMAP/MSL
+events are few and uneven across channels. Thresholds rest on 3 (OrbitVal),
+2 or 1 (SMAP/MSL, budget 1) validation runs per side.
+
 ## Change history
 
 | Date | Change |
@@ -776,3 +858,4 @@ severities aren't independent: 7 lost events can be one mission.
 | 2026-11-05 | New order: reproduce.sh, two-sided variant on dev (D32), one held-out run (D34), README. Demo: presets moved to the sidebar |
 | 2026-11-05 | `scripts/reproduce.sh` added and verified: full dev rerun matches exactly (D33) |
 | 2026-11-05 | Two-sided setting on dev (D32, design corrected by the user), clean-twin check (D35). `reproduce.sh` and `compare_results.py` extended to cover it. Held-out data not touched |
+| 2026-11-08 | Full `reproduce.sh` with two-sided step: 0 differences (D33). Held-out step committed; held-out run done once and frozen (D34) |
