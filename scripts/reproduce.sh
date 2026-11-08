@@ -2,7 +2,8 @@
 # Rebuild the project's dev results from a clean checkout:
 #   1. check the data and Python setup
 #   2. run the test suite
-#   3. train LSTM and GRU (3 seeds) and evaluate them and persistence
+#   3. train LSTM and GRU (3 seeds) and evaluate them and persistence,
+#      one-sided and two-sided
 #   4. write the tables to <outdir>/report.txt
 #   5. check the results against the demo's tracked numbers, and against
 #      a reference directory if one is given
@@ -75,6 +76,7 @@ scripts/run_stage3.sh "$OUT" "$JOBS" > "$OUT/run.log" 2>&1 || {
 
 echo "== 4. Writing tables to $OUT/report.txt"
 "$PYTHON" -m orbitval.ml.run_neural summarize --outdir "$OUT" > "$OUT/report.txt"
+"$PYTHON" -m orbitval.ml.run_two_sided summarize --outdir "$OUT" >> "$OUT/report.txt"
 
 if [ "$QUICK" = 1 ]; then
   echo "== Quick run finished. Its numbers mean nothing; step 5 skipped."

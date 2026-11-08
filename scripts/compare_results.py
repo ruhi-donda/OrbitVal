@@ -47,14 +47,16 @@ def differences(a, b, path: str = "") -> list[str]:
 
 
 def compare_dirs(new: Path, reference: Path) -> list[str]:
-    new_files = {p.name for p in (new / "results").glob("*.json")}
-    ref_files = {p.name for p in (reference / "results").glob("*.json")}
-    out = [f"{name}: only in {'new' if name in new_files else 'reference'}"
-           for name in sorted(new_files ^ ref_files)]
-    for name in sorted(new_files & ref_files):
-        a = json.loads((new / "results" / name).read_text())
-        b = json.loads((reference / "results" / name).read_text())
-        out += [f"{name}{d}" for d in differences(a, b)]
+    out = []
+    for sub in ("results", "two_sided"):
+        new_files = {p.name for p in (new / sub).glob("*.json")}
+        ref_files = {p.name for p in (reference / sub).glob("*.json")}
+        out += [f"{sub}/{name}: only in {'new' if name in new_files else 'reference'}"
+                for name in sorted(new_files ^ ref_files)]
+        for name in sorted(new_files & ref_files):
+            a = json.loads((new / sub / name).read_text())
+            b = json.loads((reference / sub / name).read_text())
+            out += [f"{sub}/{name}{d}" for d in differences(a, b)]
     return out
 
 

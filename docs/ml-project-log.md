@@ -17,8 +17,8 @@ be traced to a choice and a commit. Updated at the end of every stage.
 | 3 | Small LSTM + GRU, 3 seeds, no ablations; rerun with 80-epoch cap and grace 74 | Nov 7 | done (Nov 4) | `3a0ba54`, `8873af3`, `849a06b` |
 | 5 | Streamlit demo (runs before Stage 4) | Nov 9 | done (Nov 4) | see change history |
 | 4a | `scripts/reproduce.sh`, dev results (D33) | Nov 8 | done (Nov 5) | `0e3900a` |
-| — | Two-sided score variant, dev only (D32) | Nov 8 | next | — |
-| — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | pending | — |
+| — | Two-sided score variant, dev only (D32) | Nov 8 | done (Nov 5), approved Nov 7 | see change history |
+| — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | next | — |
 | 4b | README results section | after the held-out run | pending | — |
 | 6 | Transformer | — | skipped by decision | — |
 
@@ -327,6 +327,23 @@ dev only. Measure its false-alarm cost and its effect on the
 `stuck_sensor` and `sensor_drift` rows. The default shared score stays
 one-sided.
 
+*Design corrected by the user, 2026-11-05.* My proposal was one threshold
+on `|z|`. Error is bounded at zero, so z can't go much below −mean/std,
+and a compressed low tail could never reach a high-side threshold.
+Instead the high side keeps its score, the low side checks `−z` against
+its own threshold from clean validation data, and the budget is split:
+1 per 10k per side, 2 in total. On a mission each side takes its own max
+over channels. Trained weights are reused. Code: `orbitval/ml/two_sided.py`,
+`orbitval/ml/run_two_sided.py`. Results below.
+
+**D35. Clean-twin check on alarms.** *My addition.* Each dev mission is
+also flown without its fault, on identical noise. An alarm that also
+fires during the same steps of the clean twin may be chance. A low-side
+catch counts as attributable only if it is on a channel the fault changed
+and that channel of the twin doesn't alarm in the same steps. Reported
+next to the plain counts, which keep the shared definition. SMAP/MSL have
+no twin, so this applies to OrbitVal only.
+
 **D33. `scripts/reproduce.sh` rebuilds all dev results and checks them.**
 Checks the setup, runs the tests, trains and evaluates every detector,
 writes the tables to `<outdir>/report.txt` and the code version to
@@ -352,6 +369,15 @@ OrbitVal without a reference directory, since `results/` isn't tracked.
 and the two-sided variant, on the held-out channels and the held-out-
 orbit missions. No path to the test data exists in `reproduce.sh` yet, so
 it can't be scored by accident; that step is added together with D32.
+
+**D36. Future work, not built: a zero-variance check for frozen sensors.**
+*User decision, 2026-11-07.* D32 shows the shared score can't separate a
+frozen solar sensor from an eclipse, since both give near-zero error. A
+direct rule, such as "this channel's value hasn't changed for N steps
+while it normally does", would target that fault. It is a different
+detector, it would need its own threshold on clean data, and it would
+need care with channels that are legitimately flat (solar in umbra,
+battery at full charge). Left for after the presentation.
 
 **Known weaknesses of this setup, not fixed:**
 - *Longer training changed little (see 30 vs 80 epochs).* Early stopping
@@ -572,6 +598,146 @@ limit on the forecasters but not on the detectors. Patience 5 is now the
 binding limit for most runs (OrbitVal LSTM seed 2 stops at epoch 4 and
 stays about 50% worse than seed 0). Not changed: it would be tuning.
 
+### Two-sided setting: dev data, saved 80-epoch weights (D32)
+
+Reproduce: `python -m orbitval.ml.run_two_sided summarize`, after `run`
+for each detector, or `scripts/reproduce.sh`. Held-out data was not
+scored. The setting's one-sided column matches the saved Stage 3 results:
+259 metric sets, 0 differences. Rerunning all 21 from the same weights
+gave 0 differences. `reproduce.sh` with this step has been run only with
+`--quick` (483 tests passed), not as a full rerun.
+
+**Result: the low side caught no fault that can be attributed to it on
+OrbitVal, and splitting the budget cost SMAP about a third of its events.**
+
+**`stuck_sensor` and `sensor_drift`, missions detected at severity 1.0**
+(persistence out of 20, models out of 60 over 3 seeds):
+
+| Row | Detector | One-sided at 2 | High at 1 | Low at 1 | Low, attributable | Two-sided |
+|---|---|---|---|---|---|---|
+| stuck | persistence | 0 | 0 | 0 | 0 | 0 |
+| stuck | LSTM | 7 | 7 | 0 | 0 | 7 |
+| stuck | GRU | 24 | 23 | 1 | 0 | 23 |
+| drift | persistence | 0 | 0 | 0 | 0 | 0 |
+| drift | LSTM | 8 | 7 | 0 | 0 | 7 |
+| drift | GRU | 3 | 2 | 1 | 0 | 3 |
+
+The stuck row is flat across severities by design. Drift at lower
+severities: LSTM 2/60 at 0.75 (2 at high side, 0 low) and 0/60 below;
+GRU 1/60 one-sided and 1/60 two-sided at 0.05–0.75, and both are alarms
+that also fire on the clean twin.
+
+**Why the low side can't catch a stuck solar sensor.** On that channel
+the floor of z, −mean/std of the trailing window, is about −0.9, because
+eclipse crossings put large errors in the window. A frozen sensor reaches
+that floor (persistence: lowest z −0.98, floor −0.96) while the low
+thresholds are 2.70–2.97. A separate threshold for solar wouldn't help
+either: clean solar reaches about the same depth (−0.74 to −0.99), since
+normal eclipses also have near-zero error. To this score, a stuck solar
+sensor looks like an eclipse.
+
+**Why it doesn't catch drift.** Drift raises the error on average (mean
+error at severity 1.0, seed 0: persistence 0.47 to 0.61, LSTM 0.25 to
+0.37, GRU 0.23 to 0.32). The lowest z on temperature is −0.9 to −1.9,
+against a floor of −2.6 to −3.8, so the floor isn't what limits it here.
+
+**Previously caught events lost, OrbitVal, all faults and severities, all
+seeds.** "Not in twin" leaves out catches where the one-sided alarm also
+fired on the clean twin.
+
+| Detector | One-sided catches not in twin | Lost, not in twin | Kept only by low side |
+|---|---|---|---|
+| persistence | 254 | 1 (`sensor_noise`) | 0 |
+| LSTM | 1,138 | 6 (`sensor_noise` 2, `eclipse_power_stress` 3, drift 1) | 0 |
+| GRU | 1,241 | 17 (brownout 4, `sensor_noise` 4, `eclipse_power_stress` 2, stuck 7) | 0 |
+
+GRU's 7 stuck losses are one mission (seed 0, rep 14) repeated across 7
+severities, which don't affect that fault. GRU drift looks unchanged (9
+one-sided, 9 two-sided, out of 420), but that hides a swap. Seed 1 loses 7
+one-sided catches on rep 6, and seed 0 gains 7 low-side catches on the same
+rep. All 14 alarms also fire on the clean twin. Its catches not in the
+twin are 2 either way.
+
+**Correction to earlier numbers.** The clean-twin check shows GRU's Stage 3
+counts include alarms that also fire with no fault: at severity 1.0, drift
+3/60 and stuck 24/60 each have 1 (seed 1, rep 6). The tracked demo maps
+keep the shared definition and are not changed.
+
+**False alarms per 10k steps, OrbitVal, mean over seeds.** Validation is
+on budget by construction: 3 runs per side in 33,600 steps. Clean dev
+missions are the fair out-of-sample number (22,400 steps).
+
+| Detector | Set | One-sided at 2 | High at 1 | Low at 1 | Two-sided |
+|---|---|---|---|---|---|
+| persistence | clean dev | 2.23 | 2.23 | 1.34 | 3.57 |
+| LSTM | clean dev | 2.83 | 2.08 | 1.04 | 3.12 |
+| GRU | clean dev | 3.57 | 2.38 | 2.08 | 4.46 |
+| persistence | faulted dev, grace 74 | 2.49 | 2.49 | 1.50 | 3.99 |
+| LSTM | faulted dev, grace 74 | 2.98 | 2.14 | 1.15 | 3.29 |
+| GRU | faulted dev, grace 74 | 3.61 | 2.56 | 2.12 | 4.68 |
+
+Grace 10, two-sided: persistence 3.76, LSTM 3.28, GRU 5.08. The cost is
+real but small, and seeds differ a lot: LSTM's two-sided rate on faulted
+missions runs from 1.48 to 4.44, and one seed's low side raised no false
+alarm at all. Low-side runs are short (median 1–5 steps, longest 9), and
+at most 0.08% of clean dev steps are in low alarm, so a long run can't
+overlap a fault window by chance very often.
+
+**Where low-side false alarms happen, OrbitVal, val and clean dev pooled:**
+
+| Detector | Runs | In umbra | Channel | Note |
+|---|---|---|---|---|
+| persistence | 6 | 0 | all battery | near full charge, about 20 Wh, where steps are about 0.05 Wh against 0.13 on average |
+| LSTM | 16 | 7 (44%) | magnetometer x, y | |
+| GRU | 23 | 10 (43%) | magnetometer x, y | |
+
+Umbra is about 36% of scored time, so eclipses are **not** a clear
+hotspot, on few counts. None of these alarms is on the solar channel,
+where the eclipse effect would be largest, because solar can't reach the
+threshold. The threshold is set by the channels with the deepest tails.
+
+**SMAP/MSL dev channels, events detected per run** (persistence, then LSTM
+seeds 0–2, then GRU seeds 0–2). There's no clean twin, so these gains and
+losses can't be attributed.
+
+| Dataset | Setting | Detected | False-alarm runs |
+|---|---|---|---|
+| SMAP (18) | one-sided at 2 | 12; 13, 15, 10; 13, 14, 13 | 5; 5, 5, 4; 5, 7, 6 |
+| SMAP (18) | high at 1 | 7; 7, 8, 8; 8, 7, 7 | 0 in all |
+| SMAP (18) | low at 1 | 1; 1, 1, 0; 1, 1, 0 | 22; 21, 22, 14; 19, 13, 9 |
+| SMAP (18) | two-sided | 8; 8, 8, 8; 8, 7, 7 | 22; 21, 22, 14; 19, 13, 9 |
+| MSL (11) | one-sided at 2 | 3; 5, 3, 4; 4, 3, 3 | 2; 10, 2, 4; 4, 1, 2 |
+| MSL (11) | high at 1 | 3; 4, 3, 3; 4, 3, 3 | 1; 4, 1, 2; 2, 1, 1 |
+| MSL (11) | low at 1 | 1; 1, 1, 0; 0, 0, 0 | 27; 12, 5, 2; 2, 2, 1 |
+| MSL (11) | two-sided | 4; 5, 4, 3; 4, 3, 3 | 28; 16, 6, 4; 4, 3, 2 |
+
+- *SMAP loses 2–7 of 18 events*, nearly all from the stricter high side.
+  Its high threshold jumps from 6.0–7.7 to 20.2–33.4. Budget 1 allows only
+  2 runs in about 27,000 validation steps (MSL: 1 in about 11,700), so the
+  threshold lands on one of the few largest validation peaks.
+- *Low-side false alarms run well over budget on real data*: SMAP
+  0.83–2.04 per 10k against 1, MSL 0.79–21.37. They cluster on a few
+  channels, mostly with long flat stretches: SMAP A-4 (in all 7 runs),
+  D-11, E-3, E-9; MSL D-16, T-9. G-1 and P-15 are not flat.
+- *Low-side catches are rare*: SMAP G-1 and MSL D-16 are gains, on channels
+  that also produce low-side false alarms, so they could be chance.
+
+**Reading.** On this data, low error is not a usable fault signal for this
+score. The setting should be reported as a measured negative result, and
+the one-sided detector stays the default. The result is about this score:
+a window of 250 steps that spans eclipses, and one low threshold across
+channels. It doesn't show that a frozen sensor is undetectable. A direct
+check for zero variance would likely catch it, but that would be a
+different detector and is not built.
+
+*User decision, 2026-11-07:* keep the two-sided setting in the held-out
+run as a measured negative result. One-sided stays the headline. The
+zero-variance detector is not built (D36).
+
+Limits: thresholds rest on 3 runs per side (OrbitVal), 2 (SMAP) or 1
+(MSL). The missions in a rep share a base across cells, so counts over
+severities aren't independent: 7 lost events can be one mission.
+
 ## Change history
 
 | Date | Change |
@@ -589,3 +755,4 @@ stays about 50% worse than seed 0). Not changed: it would be tuning.
 | 2026-11-04 | Stage 3 rerun at 80 epochs; comparison above. Stage 5 demo done (D28–D31), using these weights |
 | 2026-11-05 | New order: reproduce.sh, two-sided variant on dev (D32), one held-out run (D34), README. Demo: presets moved to the sidebar |
 | 2026-11-05 | `scripts/reproduce.sh` added and verified: full dev rerun matches exactly (D33) |
+| 2026-11-05 | Two-sided setting on dev (D32, design corrected by the user), clean-twin check (D35). `reproduce.sh` and `compare_results.py` extended to cover it. Held-out data not touched |

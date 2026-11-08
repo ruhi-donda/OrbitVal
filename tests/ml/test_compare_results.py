@@ -59,8 +59,19 @@ def test_compare_dirs_reports_missing_files_and_changes(tmp_path):
     ref = _write(tmp_path, "ref", _result(threshold=5.6))
     (ref / "results" / "extra.json").write_text("{}")
     found = compare_dirs(new, ref)
-    assert "extra.json: only in reference" in found
+    assert "results/extra.json: only in reference" in found
     assert any("threshold" in line for line in found)
+
+
+def test_compare_dirs_also_checks_two_sided_results(tmp_path):
+    new = _write(tmp_path, "new", _result())
+    ref = _write(tmp_path, "ref", _result())
+    assert compare_dirs(new, ref) == []
+    (new / "two_sided").mkdir()
+    (ref / "two_sided").mkdir()
+    (new / "two_sided" / "a.json").write_text('{"threshold": 1.0}')
+    (ref / "two_sided" / "a.json").write_text('{"threshold": 2.0}')
+    assert compare_dirs(new, ref) == ["two_sided/a.json/threshold: 1.0 vs 2.0"]
 
 
 @pytest.mark.parametrize("threshold,same", [(5.5, True), (5.6, False)])
