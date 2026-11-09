@@ -52,6 +52,9 @@ omit = [
     "orbitval/ml/models/neural_detector.py",
     "orbitval/ml/train.py",
     "orbitval/ml/run_neural.py",
+    "orbitval/ml/run_two_sided.py",
+    "orbitval/ml/run_heldout.py",
+    "orbitval/ml/two_sided.py",
     "orbitval/ml/app/*",
 ]
 
