@@ -19,7 +19,7 @@ be traced to a choice and a commit. Updated at the end of every stage.
 | 4a | `scripts/reproduce.sh`, dev results (D33) | Nov 8 | done (Nov 5) | `0e3900a` |
 | — | Two-sided score variant, dev only (D32) | Nov 8 | done (Nov 5), approved Nov 7 | see change history |
 | — | One held-out run: all detectors, both held-out sets (D34) | Nov 8 | done (Nov 8), frozen | `3bb2e90` |
-| 4b | README results section | after the held-out run | pending | — |
+| 4b | README results section, from the frozen held-out run; slide figures | after the held-out run | done (Nov 9) | see change history |
 | 6 | Transformer | — | skipped by decision | — |
 
 ## Decisions
@@ -859,3 +859,4 @@ events are few and uneven across channels. Thresholds rest on 3 (OrbitVal),
 | 2026-11-05 | `scripts/reproduce.sh` added and verified: full dev rerun matches exactly (D33) |
 | 2026-11-05 | Two-sided setting on dev (D32, design corrected by the user), clean-twin check (D35). `reproduce.sh` and `compare_results.py` extended to cover it. Held-out data not touched |
 | 2026-11-08 | Full `reproduce.sh` with two-sided step: 0 differences (D33). Held-out step committed; held-out run done once and frozen (D34) |
+| 2026-11-09 | README results section written from the held-out run (dev numbers labeled as dev). Slide figures at 1920x1080 by `scripts/make_slide_figures.py` into `results/slides/`, which is now tracked; the rest of `results/` is not |

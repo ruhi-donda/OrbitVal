@@ -22,4 +22,5 @@ docs-template/README.md
 
 # Detector-validation mode: downloaded datasets and generated results
 /data/
-/results/
+/results/*
+!/results/slides/

@@ -347,6 +347,110 @@ orbitval run
 
 ---
 
+## Detector validation results (CS462)
+
+OrbitVal's fault injector can also measure anomaly detectors: which
+faults they catch, how fast, and at what false-alarm rate. Three
+forecast-then-flag detectors were compared: a persistence baseline
+(next value = last value), a small LSTM (4,513 parameters) and a small
+GRU (3,393). All three share one scoring step: the smoothed forecast
+error becomes a rolling z-score, and an alarm is raised when it crosses a
+threshold. That threshold is set on clean validation data only, to allow
+2 false alarms per 10,000 steps. Code lives in `orbitval/ml/` and needs
+the optional extra: `pip install -e ".[ml]"`.
+
+**Every number in this section comes from one held-out run, scored
+once and then frozen** (commit `3bb2e90`; `results/heldout/frozen.json`
+records the commit and checkpoint hashes). Nothing was tuned on it.
+Numbers marked *dev* come from the development data used while building.
+The full record of decisions and results is in
+[docs/ml-project-log.md](docs/ml-project-log.md).
+
+### NASA SMAP/MSL, held-out channels
+
+Event recall as counts. LSTM and GRU have one value per training seed
+(0, 1, 2).
+
+| Dataset | Persistence | LSTM | GRU | False alarms per 10k |
+|---|---|---|---|---|
+| SMAP, 37 channels, 49 events | 30 | 31, 34, 28 | 30, 32, 35 | 0.53–1.48 |
+| MSL, 19 channels, 25 events | 4 | 7, 6, 6 | 7, 6, 6 | 0.94–3.78 |
+
+![Held-out SMAP and MSL events caught](results/slides/heldout_recall.png)
+
+The models beat persistence clearly only on MSL (by 2–3 of 25 events).
+On SMAP the gap (−2 to +5 of 49) is within the spread between seeds.
+False alarms stay under budget on SMAP and exceed it in 2 of 7 MSL runs.
+
+### OrbitVal synthetic telemetry, held-out orbits
+
+Each fault was injected into 20 missions per severity, flown on 2
+orbits that no model trained or was tuned on. Each cell counts the
+missions where the fault was caught. Models are pooled over 3 seeds,
+which gives 60 missions per cell.
+
+![Held-out detectability maps](results/slides/heldout_detectability.png)
+
+| Fault, severity | Persistence (of 20) | LSTM (of 60) | GRU (of 60) |
+|---|---|---|---|
+| Brownout, 0.05 | 0 | 26 | 37 |
+| Brownout, 0.1 | 0 | 59 | 60 |
+| Sensor noise, 0.05 | 0 | 18 | 32 |
+| Sensor noise, 0.1 | 0 | 54 | 60 |
+| Sensor drift, 1.0 | 0 | 12 | 4 |
+| Stuck sensor (any severity) | 0 | 6 | 20 |
+
+- **Large faults**: from severity 0.5 up, every detector catches nearly all
+  brownout, sensor-noise and eclipse-stress faults (persistence 19–20 of
+  20, both models 60 of 60).
+- **Small faults**: the learned forecasters catch 0.05–0.1 faults that
+  persistence misses entirely.
+- **Drift and stuck sensors**: mostly missed. Stuck sensors are caught only
+  when the freeze straddles an eclipse transition, never in steady sun or
+  steady eclipse.
+- **Clean-twin check**: each mission was also flown without its fault. For
+  LSTM, about one mission per fault row alarms on the clean twin too, so
+  that catch may be chance. Persistence and GRU have none.
+
+![False alarms, dev orbits vs held-out orbits](results/slides/false_alarms_dev_vs_heldout.png)
+
+**False alarms don't transfer cleanly to new orbits.** On clean held-out
+missions the rate is 4.46 per 10k for persistence, 4.76 for LSTM and 2.83
+for GRU. On *dev* orbits it was 2.23, 2.83 and 3.57. A budget set on
+validation data from one set of orbits is not guaranteed on others.
+
+### A measured negative result: alarming on low error
+
+A frozen sensor should make the forecast error unusually small, so we
+also tried a low-side alarm. It used its own threshold, with the budget
+split to 1 false alarm per 10k per side. It caught **no** fault that
+could be attributed to it on either dev or held-out orbits, and on SMAP
+it cost 1–9 events per run, from the stricter high-side threshold.
+
+The reason is the score itself: eclipses already give near-zero error on
+the solar channel, so a frozen solar sensor looks like an eclipse. A
+dedicated zero-variance check is future work.
+
+### Limits
+
+- One held-out set, scored once.
+- 20 missions per cell, with few and unevenly spread SMAP/MSL events.
+- Thresholds rest on a handful of validation alarms.
+- Results repeat exactly on one machine (Apple Silicon, Python 3.13.2, torch
+  2.15.0). Other hardware may differ slightly.
+
+### Reproduce
+
+```bash
+scripts/download_telemanom.sh
+scripts/reproduce.sh --compare results/stage3       # dev results, about 30 min on 4 jobs
+scripts/reproduce.sh --held-out                      # also repeats the held-out run
+.venv/bin/python scripts/make_slide_figures.py       # figures in results/slides/
+streamlit run orbitval/ml/app/demo.py                # live demo, CPU, saved weights
+```
+
+---
+
 ## Architecture
 
 OrbitVal is built on five modules:
