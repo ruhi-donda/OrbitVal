@@ -5,7 +5,7 @@ approved plan, and every result, so each number in the presentation can
 be traced to a choice and a commit. Updated at the end of every stage.
 
 - Branch: `feature/ml-detector-eval`
-- Presentation: 2026-11-13
+- Presentation: 2026-11-20
 - Code: `orbitval/ml/` (core OrbitVal does not import it)
 
 ## Status
