@@ -215,9 +215,12 @@ for i, (label, bw) in enumerate(zip(steps, widths)):
         a.fill.solid()
         a.fill.fore_color.rgb = INK2
         a.line.fill.background()
-text(s, M, 4.92, LW, 0.72,
+text(s, M, 4.92, LW, 0.68,
      ["Only the forecaster differs; the scoring is shared. Alarm line set on clean data: "
       "at most 2 false alarms per 10,000 steps."], color=INK2, name="flow caption")
+text(s, M, 5.62, W - 2 * M, 0.40,
+     ["Interactive demo: inject a fault, set its severity, and watch each detector respond."],
+     name="demo")
 
 # detectors
 dw = (W - 2 * M - 2 * gap) / 3
@@ -225,11 +228,11 @@ for i, (name, desc) in enumerate((("Persistence", "next = current; no learning")
                                   ("LSTM", "trained recurrent network"),
                                   ("GRU", "trained recurrent network"))):
     x = M + i * (dw + gap)
-    card(s, x, 5.78, dw, 0.9, edge=ACCENT if i else EDGE, width=1.5 if i else 1.0)
-    text(s, x + 0.15, 5.81, dw - 0.3, 0.82,
+    card(s, x, 6.04, dw, 0.86, edge=ACCENT if i else EDGE, width=1.5 if i else 1.0)
+    text(s, x + 0.15, 6.07, dw - 0.3, 0.80,
          [{"text": name, "bold": True, "size": 22}, {"text": desc, "color": INK2}],
          space_after=0, name="det " + name)
-text(s, M, 6.82, W - 2 * M, 0.42,
+text(s, M, 6.96, W - 2 * M, 0.42,
      ["LSTM/GRU gating · backprop through time · gradient clipping · Adam · early stopping · 3 seeds"],
      color=INK2, name="techniques")
 notes(s,
@@ -283,34 +286,39 @@ notes(s,
 
 # ------------------------------------------------------------------ Slide 3
 s = new_slide("In steady sun, a frozen sensor fools every detector")
-text(s, M, 1.12, W - 2 * M, 0.95, ["0/20 · 6/60* · 20/60"], size=48, color=ACCENT, name="big stat",
+text(s, M, 1.0, W - 2 * M, 0.9, ["0/20 · 6/60* · 20/60"], size=48, color=ACCENT, name="big stat",
      display=True)
-text(s, M, 2.0, W - 2 * M, 0.45,
+text(s, M, 1.86, W - 2 * M, 0.40,
      ["Persistence · LSTM · GRU, held-out orbits: frozen sensor, caught only at eclipse crossings"],
      color=INK2, name="big label")
-text(s, M, 2.45, W - 2 * M, 0.78,
+text(s, M, 2.26, W - 2 * M, 0.76,
      ["Why: a frozen reading is easy to predict, so the forecast error drops and nothing fires. "
       "To this score, a frozen sensor looks like an eclipse."], size=20, name="why")
-cw3 = (W - 2 * M - 2 * gap) / 3
-for i, (head, body) in enumerate((("Slow drift, severity 1.0", "persistence 0/20, LSTM 12/60, GRU 4/60 caught"),
-                                  ("Two-sided alarms", "No attributable low-side catch; SMAP loses 1–9 events per run"),
-                                  ("Alarm lines on new orbits", "Persistence and LSTM noisier, GRU quieter"))):
-    x = M + i * (cw3 + gap)
-    card(s, x, 3.3, cw3, 1.38)
-    text(s, x + 0.15, 3.34, cw3 - 0.3, 1.32,
+cws = [3.55, 4.35, 3.83]                     # sized so each body wraps to at most 2 lines
+assert abs(sum(cws) + 2 * gap - (W - 2 * M)) < 0.01
+x = M
+for (head, body), cw3 in zip((("Slow drift, severity 1.0", "persistence 0/20, LSTM 12/60, GRU 4/60 caught"),
+                              ("Two-sided alarms", "No attributable low-side catch; SMAP loses 1–9 events per run"),
+                              ("Alarm lines on new orbits", "Persistence and LSTM noisier, GRU quieter")), cws):
+    card(s, x, 3.06, cw3, 1.10)
+    text(s, x + 0.15, 3.09, cw3 - 0.3, 1.04,
          [{"text": head, "bold": True}, {"text": body, "color": INK2}], space_after=2, name="small " + head)
-text(s, M, 4.76, W - 2 * M, 0.42,
+    x += cw3 + gap
+text(s, M, 4.22, W - 2 * M, 0.40,
      ["The blind spot is in the scoring, not the model: better training can't fix it."], bold=True,
      name="takeaway")
-card(s, M, 5.22, W - 2 * M, 1.46, fill=CARD, edge=ACCENT, width=2.0)
-text(s, M + 0.2, 5.24, W - 2 * M - 0.4, 1.43,
+card(s, M, 4.64, W - 2 * M, 1.72, fill=CARD, edge=ACCENT, width=2.0)
+text(s, M + 0.2, 4.66, W - 2 * M - 0.4, 1.68,
      [{"text": "OrbitVal: before a satellite's fault detection flies, it tells the team which faults the "
                "detector misses and how late it catches the rest.", "bold": True, "color": ACCENT, "size": 20},
-      {"text": "This is the first version of that validation feature in OrbitVal, an open-source (MIT) CubeSat "
-               "stress-testing tool."}], space_after=4, name="orbitval")
-text(s, M, 6.74, W - 2 * M, 0.68,
-     [TWIN_NOTE, "Code and slides drafted with Claude Code under a staged plan I reviewed; details in the repo log."],
-     color=INK2, space_after=0, name="s3 foot")
+      {"text": "For small-satellite teams who need to know what their onboard fault detection misses before "
+               "launch. This project is the first version of that feature in OrbitVal, an open-source (MIT) "
+               "CubeSat stress-testing tool."}], space_after=2, name="orbitval")
+REPO_URL = "https://github.com/ruhi-donda/OrbitVal/tree/v1.2.2-cs462"
+foot = text(s, M, 6.42, W - 2 * M, 0.98,
+            [TWIN_NOTE, "Code and slides drafted with Claude Code under a staged plan I reviewed; details in the repo log.",
+             REPO_URL], color=INK2, space_after=0, name="s3 foot")
+foot.text_frame.paragraphs[2].runs[0].hyperlink.address = REPO_URL
 notes(s,
       "In steady sun, no detector catches a frozen sensor. A frozen reading is easy to predict, so the "
       "forecast error drops and nothing fires: to this score, a frozen sensor looks like an eclipse. Catches happen "
